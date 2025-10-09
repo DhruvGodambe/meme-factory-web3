@@ -62,9 +62,7 @@ contract FeeHook is BaseTestHooks {
             params.amountSpecified
         );
         
-        // Return selector to indicate successful execution
-        // BeforeSwapDelta is 0 (no delta modification - fee handled in token)
-        // uint24 is 0 (no dynamic fee override)
+        
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
     

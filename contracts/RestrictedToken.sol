@@ -50,9 +50,9 @@ contract RestrictedToken is ERC20, Ownable {
      * @dev Override transfer logic to enforce restrictions and fees
      */
     function _update(address from, address to, uint256 value) internal override {
-        // Restrict when trading is active
+      
         if (tradingEnabled) {
-            // Only allow transfers via the official hook or poolmanager
+           
             require(
                 msg.sender == allowedHook || 
                 msg.sender == allowedPoolManager || 
@@ -61,7 +61,7 @@ contract RestrictedToken is ERC20, Ownable {
                 "Restricted: use official pool only"
             );
             
-            // Apply 10% fee if it's a trade via hook
+            
             if (msg.sender == allowedHook && from != owner() && to != owner()) {
                 uint256 fee = (value * FEE_PERCENT) / 100;
                 uint256 net = value - fee;
