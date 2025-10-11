@@ -1,0 +1,23 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "timestamp": "2025-10-11T05:48:03.155Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "poolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+  "treasury": "0x7e372a32a975CCFaE1A156Ede63A72b99c391F7c",
+  "contracts": {
+    "FeeHookDeployer": "0x90aff7C55038081898804BCfe0Be252a2172D92c",
+    "FeeHook": "0x22144cE1871F6589Fc0DA16Ae55a198dA3cf8080"
+  },
+  "create2": {
+    "salt": "0x23c19906c74ca8dab805be5203fe3596737aab8ca3aca700c275be8e1cd75b70",
+    "permissionBits": "0x80",
+    "binary": "00000010000000",
+    "transactionHash": "0xdb5f8c3e3f86cf19f96fa993e838a502a9ada8d12a992151dbe2ece3c448e31b"
+  },
+  "links": {
+    "factory": "https://sepolia.etherscan.io/address/0x90aff7C55038081898804BCfe0Be252a2172D92c",
+    "hook": "https://sepolia.etherscan.io/address/0x22144cE1871F6589Fc0DA16Ae55a198dA3cf8080",
+    "tx": "https://sepolia.etherscan.io/tx/0xdb5f8c3e3f86cf19f96fa993e838a502a9ada8d12a992151dbe2ece3c448e31b"
+  }
+}

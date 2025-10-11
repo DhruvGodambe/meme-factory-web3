@@ -1,0 +1,8 @@
+{
+  "salt": "0x0cc6eb2131daddc87f472fc78b2f652cd8e9fe21972894645fc9d4a4548b3c08",
+  "predictedAddress": "0x40E1d7E568588e62756947cB39E6A29B1632F278",
+  "firstByte": "0x40",
+  "binary": "01000000",
+  "attempts": 273,
+  "timeSeconds": 0.13
+}

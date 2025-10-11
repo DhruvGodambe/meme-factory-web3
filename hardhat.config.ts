@@ -6,12 +6,14 @@ dotenv.config();
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.24",
+    version: "0.8.26", // Required for tload/tstore (transient storage)
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
       },
+      viaIR: true,
+      evmVersion: "cancun", // Enable Cancun EVM features including transient storage
     },
   },
   networks: {
@@ -26,9 +28,33 @@ const config: HardhatUserConfig = {
           : [],
       chainId: 11155111,
     },
+    polygon: {
+      url: process.env.POLYGON_RPC_URL || "https://polygon-mainnet.infura.io/v3/YOUR-PROJECT-ID",
+      accounts: 
+        process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length === 64
+          ? [process.env.PRIVATE_KEY]
+          : [],
+      chainId: 137,
+      gasPrice: 120000000000, // 120 gwei
+      gas: 8000000,
+      timeout: 200000, // 200 seconds
+    },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY || "",
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
+      polygon: process.env.POLYGONSCAN_API_KEY || "",
+    },
+    customChains: [
+      {
+        network: "polygon",
+        chainId: 137,
+        urls: {
+          apiURL: "https://api.polygonscan.com/api",
+          browserURL: "https://polygonscan.com"
+        }
+      }
+    ]
   },
   paths: {
     sources: "./contracts",
