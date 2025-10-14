@@ -20,6 +20,7 @@ contract HookMinerDeployer {
      * - beforeSwap: BEFORE_SWAP_FLAG = 1 << 7 (bit 7)
      * - afterSwap: AFTER_SWAP_FLAG = 1 << 6 (bit 6)
      * - beforeSwapReturnDelta: BEFORE_SWAP_RETURNS_DELTA_FLAG = 1 << 3 (bit 3)
+     * Note: afterSwapReturnDelta is false, so AFTER_SWAP_RETURNS_DELTA_FLAG is NOT included
      */
     function getRequiredFlags() public pure returns (uint160) {
         return Hooks.BEFORE_INITIALIZE_FLAG | 
@@ -96,7 +97,7 @@ contract HookMinerDeployer {
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: true,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: false,    // Must match FeeHook exactly
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });

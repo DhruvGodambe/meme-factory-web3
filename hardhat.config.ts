@@ -21,7 +21,7 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     sepolia: {
-      url: process.env.SEPOLIA_RPC_URL || "https://sepolia.infura.io/v3/YOUR-PROJECT-ID",
+      url: process.env.SEPOLIA_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/YOUR-API-KEY",
       accounts: 
         process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length === 64
           ? [process.env.PRIVATE_KEY]
@@ -29,7 +29,7 @@ const config: HardhatUserConfig = {
       chainId: 11155111,
     },
     polygon: {
-      url: process.env.POLYGON_RPC_URL || "https://polygon-mainnet.infura.io/v3/YOUR-PROJECT-ID",
+      url: process.env.POLYGON_RPC_URL || "https://polygon-mainnet.g.alchemy.com/v2/YOUR-API-KEY",
       accounts: 
         process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length === 64
           ? [process.env.PRIVATE_KEY]

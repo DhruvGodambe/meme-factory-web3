@@ -1,0 +1,28 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": 1760201034106,
+  "date": "2025-10-11T16:43:54.106Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "treasury": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "contracts": {
+    "PoolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+    "UniversalRouter": "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b",
+    "RestrictedToken": "0xA1994F40592508F0123fB7344a93F89fA42e1bA0",
+    "HookMinerDeployer": "0xaC6C77E6b11967C6E5a38cbC78eD2f02183B51e5",
+    "FeeHook": "0x1eCe6307a80681831C0cED320056C45361FEa0C4"
+  },
+  "hookMining": {
+    "salt": "0x00000000000000000000000000000000000000000000000000000000000026c0",
+    "requiredFlags": "0x20c4",
+    "flagBreakdown": "Flags calculated directly from Hooks.sol via HookMinerDeployer"
+  },
+  "configuration": {
+    "tokenSymbol": "RST",
+    "tokenName": "Restricted Token",
+    "totalSupply": "1000000.0",
+    "feePercent": 10,
+    "tradingEnabled": true,
+    "restrictionActive": true
+  }
+}

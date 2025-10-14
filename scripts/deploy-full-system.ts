@@ -124,7 +124,7 @@ async function main() {
 
   const [deployer] = await ethers.getSigners();
   const deployerAddress = await deployer.getAddress();
-  const treasuryAddress = deployerAddress; // Use deployer as treasury
+  const treasuryAddress = "0x7e372a32a975CCFaE1A156Ede63A72b99c391F7c"; // Custom treasury address
 
   console.log("📋 Configuration:");
   console.log("  Network:", (await ethers.provider.getNetwork()).name);
