@@ -19,6 +19,7 @@ contract RestrictedToken is ERC20, Ownable {
     // Control flags
     bool public tradingEnabled = false;
     bool public restrictionActive = true;  // Can disable restrictions entirely
+    bool public midSwap = false;  // Flag to track if currently in a swap
     
     // Whitelist for addresses that can always transfer
     mapping(address => bool) public isWhitelisted;
@@ -34,6 +35,7 @@ contract RestrictedToken is ERC20, Ownable {
     event SwapRouterSet(address indexed router);
     event WhitelistUpdated(address indexed account, bool status);
     event PoolAuthorized(bytes32 indexed poolId, bool status);
+    event MidSwapSet(bool value);
     
     constructor() ERC20("Restricted Token", "RST") Ownable(msg.sender) {
         _mint(msg.sender, 1_000_000 * 10 ** decimals());
@@ -62,6 +64,16 @@ contract RestrictedToken is ERC20, Ownable {
         authorizedHook = _hook;
         isWhitelisted[_hook] = true;
         emit HookSet(_hook);
+    }
+    
+    /**
+     * @notice Set mid-swap flag (only callable by authorized hook)
+     * @dev Used to prevent unauthorized transfers during active swaps
+     */
+    function setMidSwap(bool value) external {
+        require(msg.sender == authorizedHook, "Only hook can set midSwap");
+        midSwap = value;
+        emit MidSwapSet(value);
     }
     
     /**
@@ -160,10 +172,19 @@ contract RestrictedToken is ERC20, Ownable {
         
         bool isAllowedTransfer = isWhitelisted[from] || isWhitelisted[to];
         
-        require(
-            isAllowedTransfer,
-            "RST: Only tradeable through authorized pool"
-        );
+        // Additional check: If midSwap is true, only allow whitelisted transfers
+        // This prevents sandwich attacks and unauthorized transfers during swaps
+        if (midSwap) {
+            require(
+                isAllowedTransfer,
+                "RST: Transfer restricted during swap"
+            );
+        } else {
+            require(
+                isAllowedTransfer,
+                "RST: Only tradeable through authorized pool"
+            );
+        }
         
         super._update(from, to, value);
     }

@@ -1,0 +1,31 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": 1760552128122,
+  "date": "2025-10-15T18:15:28.122Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "treasury": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "contracts": {
+    "PoolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+    "UniversalRouter": "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b",
+    "FeeHookFactory": "0x6D6ACD0F12611EfAA523a33154744d56d7e15582",
+    "FeeHook": "0xC565bb8f7F2d6d6cb5B2aD7518E8631d4d41a8C4",
+    "RestrictedToken": "0xc8AB947BC9D6287DB6DFf247642a2833dad58589"
+  },
+  "hookMining": {
+    "salt": "0x00000000000000000000000000000000000000000000000000000000000019fc",
+    "requiredFlags": "0x28c4"
+  },
+  "poolKey": {
+    "currency0": "0x0000000000000000000000000000000000000000",
+    "currency1": "0xc8AB947BC9D6287DB6DFf247642a2833dad58589",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "hooks": "0xC565bb8f7F2d6d6cb5B2aD7518E8631d4d41a8C4"
+  },
+  "configuration": {
+    "loadingLiquidity": true,
+    "routerRestrict": true,
+    "tradingEnabled": true
+  }
+}

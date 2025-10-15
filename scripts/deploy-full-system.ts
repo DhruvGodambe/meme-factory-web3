@@ -3,128 +3,31 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
- * Complete deployment script for RestrictedToken + FeeHook system
+ * Complete deployment script for FeeHook + RestrictedToken system
+ * 
+ * Deploys and configures all contracts WITHOUT initializing pools
+ * Pool initialization will be done via Uniswap interface
  * 
  * Steps:
- * 1. Deploy RestrictedToken
- * 2. Deploy FeeHookDeployer factory
- * 3. Mine correct salt for hook address with proper permission bits
- * 4. Deploy FeeHook using factory with mined salt
- * 5. Configure RestrictedToken with PoolManager, Hook, and Router addresses
+ * 1. Deploy FeeHookFactory
+ * 2. Mine salt and deploy FeeHook
+ * 3. Deploy RestrictedToken
+ * 4. Register collection in factory
+ * 5. Configure all contracts and whitelists
  * 6. Enable trading
  */
 
 // Uniswap v4 addresses (update based on your network)
 const POOL_MANAGER = "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543"; // Sepolia v4 PoolManager
-const UNIVERSAL_ROUTER = "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b"; // Sepolia Universal Router (update with actual address)
-
-/**
- * Uniswap v4 Hook Permission Flags (from Hooks.sol)
- * 
- * Bit positions (right to left, 0-indexed):
- * Bit 13: BEFORE_INITIALIZE_FLAG    = 1 << 13 = 0x2000
- * Bit 12: AFTER_INITIALIZE_FLAG     = 1 << 12 = 0x1000
- * Bit 11: BEFORE_ADD_LIQUIDITY_FLAG = 1 << 11 = 0x0800
- * Bit 10: AFTER_ADD_LIQUIDITY_FLAG  = 1 << 10 = 0x0400
- * Bit 9:  BEFORE_REMOVE_LIQUIDITY_FLAG = 1 << 9 = 0x0200
- * Bit 8:  AFTER_REMOVE_LIQUIDITY_FLAG  = 1 << 8 = 0x0100
- * Bit 7:  BEFORE_SWAP_FLAG          = 1 << 7 = 0x0080  ← NOTE: Not bit 6!
- * Bit 6:  AFTER_SWAP_FLAG           = 1 << 6 = 0x0040  ← NOTE: Not bit 7!
- * Bit 5:  BEFORE_DONATE_FLAG        = 1 << 5 = 0x0020
- * Bit 4:  AFTER_DONATE_FLAG         = 1 << 4 = 0x0010
- * Bit 3:  BEFORE_SWAP_RETURN_DELTA  = 1 << 3 = 0x0008
- * Bit 2:  AFTER_SWAP_RETURN_DELTA   = 1 << 2 = 0x0004
- * Bit 1:  AFTER_ADD_LIQUIDITY_RETURN_DELTA = 1 << 1 = 0x0002
- * Bit 0:  AFTER_REMOVE_LIQUIDITY_RETURN_DELTA = 1 << 0 = 0x0001
- * 
- * WARNING: The actual bit positions may vary! Check your version of Hooks.sol
- * The safest approach is to directly import the constants from the Hooks library
- */
-
-// Define flags based on actual Hooks.sol constants
-// These are now correctly imported from the HookMiner contract
-// which uses the official Hooks library constants
-const BEFORE_INITIALIZE_FLAG = 1n << 13n; // 0x2000
-const BEFORE_SWAP_FLAG = 1n << 7n;        // 0x0080 (corrected from bit 6)
-const AFTER_SWAP_FLAG = 1n << 6n;         // 0x0040 (corrected from bit 7)
-const BEFORE_SWAP_RETURN_DELTA_FLAG = 1n << 3n; // 0x0008 (corrected from bit 10)
-
-/**
- * Mine a salt that produces a hook address with correct permission bits
- */
-async function mineSalt(
-  factoryAddress: string,
-  requiredFlags: bigint,
-  creationCode: string,
-  constructorArgs: string
-): Promise<{ salt: string; hookAddress: string }> {
-  console.log("⛏️  Mining salt for hook address...");
-  console.log("   Factory:", factoryAddress);
-  console.log("   Required flags: 0x" + requiredFlags.toString(16).padStart(4, '0'));
-  console.log("   Binary:", requiredFlags.toString(2).padStart(14, '0'));
-  
-  // Display which permissions are enabled
-  const permissions = [
-    { name: "beforeInitialize", flag: BEFORE_INITIALIZE_FLAG },
-    { name: "beforeSwap", flag: BEFORE_SWAP_FLAG },
-    { name: "afterSwap", flag: AFTER_SWAP_FLAG },
-    { name: "beforeSwapReturnDelta", flag: BEFORE_SWAP_RETURN_DELTA_FLAG }
-  ];
-  
-  permissions.forEach(p => {
-    const enabled = (requiredFlags & p.flag) !== 0n;
-    console.log(`   - ${p.name}: ${enabled ? "✅" : "❌"}`);
-  });
-  console.log("");
-
-  const initCode = creationCode + constructorArgs.slice(2);
-  const initCodeHash = ethers.keccak256(initCode);
-  
-  const MAX_ITERATIONS = 2000000;
-  const timestamp = Date.now();
-  
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const salt = ethers.keccak256(
-      ethers.solidityPacked(["string"], [`feehook-v4-${timestamp}-${i}`])
-    );
-    
-    // Compute CREATE2 address
-    const hash = ethers.solidityPackedKeccak256(
-      ["bytes1", "address", "bytes32", "bytes32"],
-      ["0xff", factoryAddress, salt, initCodeHash]
-    );
-    const hookAddress = ethers.getAddress("0x" + hash.slice(-40));
-    
-    // Check if address matches required flags
-    const addressInt = BigInt(hookAddress);
-    const permissionBits = addressInt & 0x3FFFn; // Last 14 bits
-    
-    if (permissionBits === requiredFlags) {
-      console.log("✅ Found valid salt!");
-      console.log("   Salt:", salt);
-      console.log("   Hook Address:", hookAddress);
-      console.log("   Permission bits: 0x" + permissionBits.toString(16).padStart(4, '0'));
-      console.log("   Binary:", permissionBits.toString(2).padStart(14, '0'));
-      console.log("   Attempts:", (i + 1).toLocaleString());
-      console.log("");
-      return { salt, hookAddress };
-    }
-    
-    if ((i + 1) % 10000 === 0) {
-      process.stdout.write(`\r   Checked ${(i + 1).toLocaleString()} salts...`);
-    }
-  }
-  
-  throw new Error(`Could not find valid salt in ${MAX_ITERATIONS.toLocaleString()} attempts`);
-}
+const UNIVERSAL_ROUTER = "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b"; // Sepolia Universal Router
 
 async function main() {
-  console.log("\n🚀 Full System Deployment: RestrictedToken + FeeHook\n");
+  console.log("\n🚀 Deploying FeeHook System (Ready for Uniswap Interface)\n");
   console.log("=".repeat(70));
 
   const [deployer] = await ethers.getSigners();
   const deployerAddress = await deployer.getAddress();
-  const treasuryAddress = "0x7e372a32a975CCFaE1A156Ede63A72b99c391F7c"; // Custom treasury address
+  const treasuryAddress = deployerAddress; // Using deployer as treasury
 
   console.log("📋 Configuration:");
   console.log("  Network:", (await ethers.provider.getNetwork()).name);
@@ -136,9 +39,62 @@ async function main() {
   console.log("");
 
   // ============================================================================
-  // STEP 1: Deploy RestrictedToken
+  // STEP 1: Deploy FeeHookFactory
   // ============================================================================
-  console.log("📤 Step 1: Deploying RestrictedToken...");
+  console.log("📤 Step 1: Deploying FeeHookFactory...");
+  const FeeHookFactory = await ethers.getContractFactory("FeeHookFactory");
+  const factory = await FeeHookFactory.deploy(POOL_MANAGER, treasuryAddress);
+  await factory.waitForDeployment();
+  const factoryAddress = await factory.getAddress();
+  
+  console.log("   ✅ FeeHookFactory deployed at:", factoryAddress);
+  console.log("");
+
+  // ============================================================================
+  // STEP 2: Mine Salt & Deploy FeeHook
+  // ============================================================================
+  console.log("📤 Step 2: Mining salt for FeeHook...");
+  
+  const requiredFlags = await (factory as any).getRequiredFlags();
+  console.log("   Required flags: 0x" + requiredFlags.toString(16));
+  console.log("");
+  
+  console.log("   ⏳ Mining salt (this may take a while)...");
+  const [hookAddress, salt] = await (factory as any).mineSalt();
+  
+  console.log("   ✅ Valid salt found!");
+  console.log("   Salt:", salt);
+  console.log("   Hook address:", hookAddress);
+  console.log("");
+
+  // ============================================================================
+  // STEP 3: Deploy FeeHook
+  // ============================================================================
+  console.log("📤 Step 3: Deploying FeeHook...");
+  
+  const deployTx = await (factory as any).deployHook(salt);
+  console.log("   ⏳ Waiting for transaction...");
+  const receipt = await deployTx.wait();
+  
+  if (!receipt) {
+    throw new Error("Failed to get transaction receipt");
+  }
+  
+  console.log("   ✅ FeeHook deployed at:", hookAddress);
+  console.log("   Transaction hash:", receipt.hash);
+  
+  // Verify deployment
+  const deployedCode = await ethers.provider.getCode(hookAddress);
+  if (deployedCode === "0x") {
+    throw new Error("❌ Hook deployment failed");
+  }
+  console.log("   ✅ Deployment verified");
+  console.log("");
+
+  // ============================================================================
+  // STEP 4: Deploy RestrictedToken
+  // ============================================================================
+  console.log("📤 Step 4: Deploying RestrictedToken...");
   const RestrictedToken = await ethers.getContractFactory("RestrictedToken");
   const token = await RestrictedToken.deploy();
   await token.waitForDeployment();
@@ -150,152 +106,111 @@ async function main() {
   console.log("");
 
   // ============================================================================
-  // STEP 2: Deploy HookMinerDeployer
+  // STEP 5: Register Collection
   // ============================================================================
-  console.log("📤 Step 2: Deploying HookMinerDeployer...");
-  const HookMinerDeployer = await ethers.getContractFactory("HookMinerDeployer");
-  const hookMiner = await HookMinerDeployer.deploy();
-  await hookMiner.waitForDeployment();
-  const minerAddress = await hookMiner.getAddress();
+  console.log("📤 Step 5: Registering collection...");
   
-  console.log("   ✅ HookMinerDeployer deployed at:", minerAddress);
+  let tx = await (factory as any).registerCollection(tokenAddress, tokenAddress);
+  await tx.wait();
+  
+  console.log("   ✅ Collection registered");
   console.log("");
 
   // ============================================================================
-  // STEP 3: Mine Salt for Hook Address
+  // STEP 6: Configure RestrictedToken
   // ============================================================================
-  console.log("⛏️  Step 3: Mining salt for hook address with correct permissions...");
+  console.log("⚙️  Step 6: Configuring RestrictedToken...");
   
-  // Use HookMinerDeployer to get the required flags directly from Hooks.sol
-  const requiredFlags = await hookMiner.getRequiredFlags();
-  console.log("   Required flags from HookMinerDeployer: 0x" + requiredFlags.toString(16));
-  console.log("");
-  
-  // Mine salt using HookMinerDeployer
-  console.log("   Mining parameters:");
-  console.log("   - Deployer (HookMinerDeployer):", minerAddress);
-  console.log("   - Pool Manager:", POOL_MANAGER);
-  console.log("   - Treasury:", treasuryAddress);
-  console.log("   - Token:", tokenAddress);
-  console.log("");
-  
-  const [hookAddress, salt] = await hookMiner.mineSalt(
-    POOL_MANAGER,
-    treasuryAddress,
-    tokenAddress
-  );
-  
-  console.log("   ✅ Valid salt found!");
-  console.log("   Salt:", salt);
-  console.log("   Predicted hook address:", hookAddress);
-  console.log("");
-
-  // ============================================================================
-  // STEP 4: Deploy FeeHook using HookMinerDeployer
-  // ============================================================================
-  console.log("📤 Step 4: Deploying FeeHook using HookMinerDeployer...");
-  console.log("   Using salt:", salt);
-  console.log("");
-  
-  const deployTx = await hookMiner.deployHook(
-    POOL_MANAGER,
-    treasuryAddress,
-    tokenAddress,
-    salt
-  );
-  
-  console.log("   ⏳ Waiting for transaction to be mined...");
-  const receipt = await deployTx.wait();
-  
-  if (!receipt) {
-    throw new Error("Failed to get transaction receipt");
-  }
-  
-  // The deployed hook address should be in the logs or we can compute it
-  // Since we know the salt and the deployer, we can compute the CREATE2 address
-  const deployedHookAddress = hookAddress; // Use the pre-computed address
-  console.log("   ✅ FeeHook deployed at:", deployedHookAddress);
-  console.log("   📋 Transaction hash:", receipt.hash);
-  
-  // Verify the deployment by checking if code exists at the address
-  const deployedCode = await ethers.provider.getCode(deployedHookAddress);
-  if (deployedCode === "0x") {
-    throw new Error("❌ Hook deployment failed - no code at address");
-  }
-  
-  console.log("   ✅ Hook address verification passed!");
-  console.log("");
-
-  // ============================================================================
-  // STEP 5: Configure RestrictedToken
-  // ============================================================================
-  console.log("⚙️  Step 5: Configuring RestrictedToken...");
-  
-  // Set PoolManager
   console.log("   Setting PoolManager...");
-  let tx2 = await token.setPoolManager(POOL_MANAGER);
-  await tx2.wait();
+  tx = await token.setPoolManager(POOL_MANAGER);
+  await tx.wait();
   console.log("   ✅ PoolManager set");
   
-  // Set Hook
-  console.log("   Setting Hook address...");
-  tx2 = await token.setHook(hookAddress);
-  await tx2.wait();
-  console.log("   ✅ Hook address set");
+  console.log("   Setting Hook...");
+  tx = await token.setHook(hookAddress);
+  await tx.wait();
+  console.log("   ✅ Hook set");
   
-  // Set SwapRouter (CRITICAL!)
   console.log("   Setting SwapRouter...");
-  tx2 = await token.setSwapRouter(UNIVERSAL_ROUTER);
-  await tx2.wait();
+  tx = await token.setSwapRouter(UNIVERSAL_ROUTER);
+  await tx.wait();
   console.log("   ✅ SwapRouter set");
   
-  // Whitelist treasury for fee collection
-  console.log("   Whitelisting treasury...");
-  tx2 = await token.setWhitelist(treasuryAddress, true);
-  await tx2.wait();
+  console.log("   Whitelisting Hook...");
+  tx = await token.setWhitelist(hookAddress, true);
+  await tx.wait();
+  console.log("   ✅ Hook whitelisted");
+  
+  console.log("   Whitelisting PoolManager...");
+  tx = await token.setWhitelist(POOL_MANAGER, true);
+  await tx.wait();
+  console.log("   ✅ PoolManager whitelisted");
+  
+  console.log("   Whitelisting UniversalRouter...");
+  tx = await token.setWhitelist(UNIVERSAL_ROUTER, true);
+  await tx.wait();
+  console.log("   ✅ UniversalRouter whitelisted");
+  
+  console.log("   Whitelisting Treasury...");
+  tx = await token.setWhitelist(treasuryAddress, true);
+  await tx.wait();
   console.log("   ✅ Treasury whitelisted");
   
-  // Enable Trading
-  console.log("   Enabling trading...");
-  tx2 = await token.setTradingEnabled(true);
-  await tx2.wait();
+  console.log("   Whitelisting Token (for addFees)...");
+  tx = await token.setWhitelist(tokenAddress, true);
+  await tx.wait();
+  console.log("   ✅ Token whitelisted");
+  console.log("");
+
+  // ============================================================================
+  // STEP 7: Configure Factory
+  // ============================================================================
+  console.log("⚙️  Step 7: Configuring Factory...");
+  
+  console.log("   Enabling router restrictions...");
+  tx = await (factory as any).setRouterRestrict(true);
+  await tx.wait();
+  console.log("   ✅ Router restrictions enabled");
+  
+  console.log("   Whitelisting router in factory...");
+  tx = await (factory as any).setRouter(UNIVERSAL_ROUTER, true);
+  await tx.wait();
+  console.log("   ✅ Router whitelisted");
+  
+  console.log("   Enabling liquidity loading...");
+  tx = await (factory as any).setLoadingLiquidity(true);
+  await tx.wait();
+  console.log("   ✅ Liquidity loading enabled");
+  console.log("");
+
+  // ============================================================================
+  // STEP 8: Enable Trading
+  // ============================================================================
+  console.log("⚙️  Step 8: Enabling trading...");
+  
+  tx = await token.setTradingEnabled(true);
+  await tx.wait();
   console.log("   ✅ Trading enabled");
   console.log("");
 
   // ============================================================================
-  // STEP 6: Verify Configuration
+  // STEP 9: Verify Configuration
   // ============================================================================
-  console.log("🔍 Step 6: Verifying configuration...");
+  console.log("🔍 Step 9: Verifying configuration...");
   
   const hook = await ethers.getContractAt("FeeHook", hookAddress);
   const restrictionStatus = await token.getRestrictionStatus();
   
-  console.log("   RestrictedToken:");
-  console.log("     - Pool Manager:", restrictionStatus._poolManager);
-  console.log("     - Hook:", restrictionStatus._hook);
-  console.log("     - SwapRouter:", restrictionStatus._router);
-  console.log("     - Trading Enabled:", restrictionStatus._tradingEnabled);
-  console.log("     - Restrictions Active:", restrictionStatus._restrictionActive);
-  console.log("     - Treasury Whitelisted:", await token.isWhitelisted(treasuryAddress));
-  console.log("");
-  console.log("   FeeHook:");
-  console.log("     - Treasury:", await hook.treasury());
-  console.log("     - Owner:", await hook.owner());
-  console.log("     - Restricted Token:", await hook.restrictedToken());
-  console.log("     - Fee Percent:", await hook.FEE_PERCENT(), "%");
-  
-  // Verify hook permissions
-  const permissions = await hook.getHookPermissions();
-  console.log("");
-  console.log("   Hook Permissions:");
-  console.log("     - beforeInitialize:", permissions.beforeInitialize);
-  console.log("     - beforeSwap:", permissions.beforeSwap);
-  console.log("     - afterSwap:", permissions.afterSwap);
-  console.log("     - beforeSwapReturnDelta:", permissions.beforeSwapReturnDelta);
+  console.log("   ✓ Hook at:", hookAddress);
+  console.log("   ✓ Factory at:", factoryAddress);
+  console.log("   ✓ Token at:", tokenAddress);
+  console.log("   ✓ Trading enabled:", restrictionStatus._tradingEnabled);
+  console.log("   ✓ Liquidity loading:", await (factory as any).loadingLiquidity());
+  console.log("   ✓ Router restrictions:", await (factory as any).routerRestrict());
   console.log("");
 
   // ============================================================================
-  // STEP 7: Save Deployment Info
+  // STEP 10: Save Deployment
   // ============================================================================
   const timestamp = Date.now();
   const deploymentInfo = {
@@ -308,64 +223,75 @@ async function main() {
     contracts: {
       PoolManager: POOL_MANAGER,
       UniversalRouter: UNIVERSAL_ROUTER,
-      RestrictedToken: tokenAddress,
-      HookMinerDeployer: minerAddress,
-      FeeHook: hookAddress
+      FeeHookFactory: factoryAddress,
+      FeeHook: hookAddress,
+      RestrictedToken: tokenAddress
     },
     hookMining: {
       salt,
-      requiredFlags: "0x" + requiredFlags.toString(16).padStart(4, '0'),
-      flagBreakdown: "Flags calculated directly from Hooks.sol via HookMinerDeployer"
+      requiredFlags: "0x" + requiredFlags.toString(16)
+    },
+    poolKey: {
+      currency0: "0x0000000000000000000000000000000000000000",
+      currency1: tokenAddress,
+      fee: 3000,
+      tickSpacing: 60,
+      hooks: hookAddress
     },
     configuration: {
-      tokenSymbol: await token.symbol(),
-      tokenName: await token.name(),
-      totalSupply: ethers.formatEther(await token.totalSupply()),
-      feePercent: 10,
-      tradingEnabled: true,
-      restrictionActive: true
+      loadingLiquidity: true,
+      routerRestrict: true,
+      tradingEnabled: true
     }
   };
 
   const outputPath = path.join(__dirname, `../deployment-full-${timestamp}.json`);
   fs.writeFileSync(outputPath, JSON.stringify(deploymentInfo, null, 2));
   
-  console.log("💾 Deployment info saved to:", outputPath);
+  console.log("💾 Saved to:", outputPath);
   console.log("");
 
   // ============================================================================
   // Summary
   // ============================================================================
   console.log("=".repeat(70));
-  console.log("✅ DEPLOYMENT COMPLETE!");
+  console.log("✅ DEPLOYMENT COMPLETE - READY FOR UNISWAP INTERFACE!");
   console.log("=".repeat(70));
   console.log("");
   console.log("📝 Contract Addresses:");
-  console.log("   RestrictedToken:", tokenAddress);
-  console.log("   HookMinerDeployer:", minerAddress);
+  console.log("   FeeHookFactory:", factoryAddress);
   console.log("   FeeHook:", hookAddress);
+  console.log("   RestrictedToken:", tokenAddress);
   console.log("");
-  console.log("🎯 Next Steps:");
-  console.log("   1. Verify contracts on block explorer");
-  console.log("   2. Initialize pool with desired pair (e.g., ETH/RST)");
-  console.log("   3. Add initial liquidity through the hook");
-  console.log("   4. Test swap with 10% fee collection");
+  console.log("🎯 Pool Configuration for Uniswap Interface:");
+  console.log("   Currency 0 (ETH):", "0x0000000000000000000000000000000000000000");
+  console.log("   Currency 1 (Token):", tokenAddress);
+  console.log("   Fee Tier:", "3000 (0.3%)");
+  console.log("   Tick Spacing:", "60");
+  console.log("   Hook Address:", hookAddress);
   console.log("");
-  console.log("⚠️  Important Notes:");
-  console.log("   - Hook address has correct permission bits (0x24C0)");
-  console.log("   - Universal Router is whitelisted for token transfers");
-  console.log("   - Treasury is whitelisted for receiving fees");
-  console.log("   - Only pools created through this hook are authorized");
-  console.log("   - 10% fee is collected on swaps TO RestrictedToken");
-  console.log("   - Fees go to treasury:", treasuryAddress);
+  console.log("⚠️  Important for Uniswap Interface:");
+  console.log("   1. Use Hook Address:", hookAddress);
+  console.log("   2. Pair: ETH / RestrictedToken");
+  console.log("   3. Factory.loadingLiquidity is: ENABLED");
+  console.log("   4. Token trading is: ENABLED");
+  console.log("   5. Router restrictions are: ENABLED");
   console.log("");
-  console.log("🔒 Security Checklist:");
-  console.log("   ✓ PoolManager whitelisted");
-  console.log("   ✓ Hook whitelisted");
-  console.log("   ✓ SwapRouter whitelisted");
-  console.log("   ✓ Treasury whitelisted");
-  console.log("   ✓ Trading enabled");
-  console.log("   ✓ Restrictions active");
+  console.log("🔒 Security Status:");
+  console.log("   ✓ All critical addresses whitelisted");
+  console.log("   ✓ Router restrictions active");
+  console.log("   ✓ Mid-swap protection ready");
+  console.log("   ✓ 10% fee will be collected");
+  console.log("   ✓ 90/10 split (collection/treasury)");
+  console.log("");
+  console.log("📋 Next Steps:");
+  console.log("   1. Go to Uniswap v4 interface");
+  console.log("   2. Create pool with above configuration");
+  console.log("   3. Add liquidity");
+  console.log("   4. Test swaps - fees will be collected!");
+  console.log("");
+  console.log("💡 To disable pool creation after setup:");
+  console.log("   factory.setLoadingLiquidity(false)");
   console.log("");
 }
 

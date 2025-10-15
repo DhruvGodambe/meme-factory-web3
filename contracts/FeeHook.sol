@@ -11,313 +11,351 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {toBeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IERC20, IERC721, INFTStrategy, IFeeHookFactory, IRestrictedToken} from "./Interfaces.sol";
 
 /**
- * @title FeeHook (patched - safe Option B)
- * @notice Uniswap v4 Hook that collects a 10% fee on swaps that involve `restrictedToken`.
- *   - Fee is computed from actual swap result in _afterSwap (safe for output-fees)
- *   - Fees are recorded in pendingFees and must be settled via unlockCallback or settlePendingFees
- *   - Add owner-settle helper to allow manual settlement/testing
+ * @title FeeHook - NFT Collection Fee Hook
+ * @notice Hook that charges fees on swaps and distributes them: 90% to collection, 10% to treasury
+ * @dev Integrates with factory to ensure only authorized pools can be created
  */
 contract FeeHook is BaseHook {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using BeforeSwapDeltaLibrary for BeforeSwapDelta;
+    using StateLibrary for IPoolManager;
+    using CurrencySettler for Currency;
+    using SafeCast for uint256;
+    using SafeCast for int128;
+
+    uint128 private constant TOTAL_BIPS = 10000;
+    uint128 private constant DEFAULT_FEE = 1000; // 10% default fee
+    uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
+    uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
     address public treasury;
     address public owner;
-    address public restrictedToken;
-    uint256 public constant FEE_PERCENT = 10; // 10% fee
-
-    // Track authorized pools
+    address public factory;
+    
+    // Track authorized pools and their collections
     mapping(PoolId => bool) public authorizedPools;
-
-    // Bookkeeping: fees that have been "recorded" and awaiting settlement (per pool + currency)
-    mapping(PoolId => mapping(Currency => uint256)) public pendingFees;
-
-    // Track accumulated fees actually transferred to treasury (historical/tracking)
-    mapping(Currency => uint256) public feesOwedToTreasury;
+    mapping(PoolId => address) public poolToCollection;
+    mapping(address => PoolId) public collectionToPool;
+    
+    // Collection owners can claim custom fee addresses
+    mapping(address => address) public feeAddressClaimedByOwner;
 
     // Events
-    event PoolAuthorized(PoolId indexed poolId);
+    event PoolAuthorized(PoolId indexed poolId, address indexed collection);
     event FeeCollected(
+        PoolId indexed poolId,
         Currency indexed currency,
         uint256 amount,
-        string feeType,
-        address indexed recipient
+        address indexed collection
     );
-    event FeeDebug(address indexed token, bool zeroForOne, int256 specifiedAmount, uint256 feeAmount, bool rstIsSpecified);
+    event FeeProcessed(
+        address indexed collection,
+        uint256 collectionAmount,
+        uint256 treasuryAmount
+    );
     event TreasurySet(address indexed treasury);
-    event RestrictedTokenSet(address indexed token);
-    event PendingFeesSettled(PoolId indexed poolId, Currency indexed currency, uint256 amount, address indexed treasury);
+    event FactorySet(address indexed factory);
+    event CollectionFeeAddressSet(address indexed collection, address indexed feeAddress);
+
+    error NotOwner();
+    error NotFactory();
+    error InvalidTreasury();
+    error InvalidFactory();
+    error InvalidCollection();
+    error UnauthorizedPool();
+    error NotCollectionOwner();
+    error PoolAlreadyExists();
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
 
-    constructor(IPoolManager _poolManager, address _treasury, address _restrictedToken)
-        BaseHook(_poolManager)
-    {
-        require(_treasury != address(0), "Invalid treasury");
-        require(_restrictedToken != address(0), "Invalid restrictedToken");
+    modifier onlyFactory() {
+        if (msg.sender != factory) revert NotFactory();
+        _;
+    }
+
+    constructor(
+        IPoolManager _poolManager,
+        address _treasury,
+        address _factory
+    ) BaseHook(_poolManager) {
+        if (_treasury == address(0)) revert InvalidTreasury();
+        if (_factory == address(0)) revert InvalidFactory();
+        
         treasury = _treasury;
-        restrictedToken = _restrictedToken;
+        factory = _factory;
         owner = msg.sender;
     }
 
+    /**
+     * @notice Before pool initialization - authorize the pool
+     * @dev Can only be called during factory-controlled liquidity loading
+     */
     function _beforeInitialize(
         address, /* sender */
         PoolKey calldata key,
         uint160 /* sqrtPriceX96 */
     ) internal override returns (bytes4) {
         require(address(key.hooks) == address(this), "Pool must use this hook");
-
+        
+        // CRITICAL: Only allow pool initialization when factory enables it
+        if (!IFeeHookFactory(factory).loadingLiquidity()) {
+            revert UnauthorizedPool();
+        }
+        
         PoolId poolId = key.toId();
+        
+        // Extract collection address (currency1 is the collection token)
+        address collection = Currency.unwrap(key.currency1);
+        if (collection == address(0)) revert InvalidCollection();
+        
+        // Check if pool already exists for this collection
+        if (PoolId.unwrap(collectionToPool[collection]) != bytes32(0)) revert PoolAlreadyExists();
+        
         authorizedPools[poolId] = true;
+        poolToCollection[poolId] = collection;
+        collectionToPool[collection] = poolId;
 
-        emit PoolAuthorized(poolId);
+        emit PoolAuthorized(poolId, collection);
 
         return IHooks.beforeInitialize.selector;
     }
 
     /**
-     * @notice beforeSwap: unchanged for returning the BeforeSwapDelta but DO NOT
-     * immediately increment feesOwedToTreasury. Instead return delta for accounting and
-     * record only debug/event info. Actual pendingFees will be recorded in _afterSwap.
+     * @notice Before add liquidity - ensure authorized and factory allows it
+     */
+    function _beforeAddLiquidity(
+        address, /* sender */
+        PoolKey calldata key,
+        ModifyLiquidityParams calldata, /* params */
+        bytes calldata /* hookData */
+    ) internal view override returns (bytes4) {
+        PoolId poolId = key.toId();
+        if (!authorizedPools[poolId]) revert UnauthorizedPool();
+        
+        // CRITICAL: Only allow liquidity addition when factory enables it
+        if (!IFeeHookFactory(factory).loadingLiquidity()) {
+            revert UnauthorizedPool();
+        }
+        
+        return IHooks.beforeAddLiquidity.selector;
+    }
+
+    /**
+     * @notice Before swap - set mid-swap flag if router restrictions are enabled
      */
     function _beforeSwap(
         address, /* sender */
         PoolKey calldata key,
-        SwapParams calldata params,
+        SwapParams calldata, /* params */
         bytes calldata /* hookData */
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        PoolId poolId = key.toId();
-        require(authorizedPools[poolId], "Unauthorized pool");
-
-        bool rstIsCurrency0 = Currency.unwrap(key.currency0) == restrictedToken;
-        bool rstIsCurrency1 = Currency.unwrap(key.currency1) == restrictedToken;
-
-        if (!rstIsCurrency0 && !rstIsCurrency1) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        // If factory has router restrictions enabled, set midSwap flag on token
+        if (IFeeHookFactory(factory).routerRestrict()) {
+            address restrictedToken = Currency.unwrap(key.currency1);
+            // During off-chain quotes (STATICCALL), state writes revert. Swallow failures safely.
+            try IRestrictedToken(restrictedToken).setMidSwap(true) {} catch {}
         }
-
-        // Keep original behavior for specified-token fee (unchanged) — but DO NOT record pending fee here.
-        int256 specifiedAmount = params.amountSpecified;
-
-        bool rstIsSpecified = false;
-        Currency rstCurrency;
-
-        if (rstIsCurrency0 && params.zeroForOne) {
-            rstIsSpecified = true;
-            rstCurrency = key.currency0;
-        } else if (rstIsCurrency1 && !params.zeroForOne) {
-            rstIsSpecified = true;
-            rstCurrency = key.currency1;
-        }
-
-        if (rstIsSpecified && specifiedAmount != 0) {
-            uint256 absAmount = specifiedAmount < 0 ? uint256(-specifiedAmount) : uint256(specifiedAmount);
-            uint256 feeAmount = (absAmount * FEE_PERCENT) / 100;
-
-            require(feeAmount <= uint256(uint128(type(int128).max)), "Fee overflow");
-            require(feeAmount <= absAmount, "Fee exceeds amount");
-
-            if (feeAmount > 0) {
-                // NOTE: Do NOT add to pendingFees or feesOwedToTreasury here to avoid double-counting.
-                // We still return the BeforeSwapDelta so pool accounting adjusts the swap.
-                int128 deltaSpecified;
-                if (specifiedAmount < 0) {
-                    // exact-input: user gives tokens; positive delta means hook "takes" some of the specified token
-                    deltaSpecified = int128(int256(feeAmount));
-                } else {
-                    // exact-output: user receives tokens; negative delta increases what user must provide
-                    deltaSpecified = -int128(int256(feeAmount));
-                }
-
-                // Debug event for tracing
-                emit FeeDebug(
-                    Currency.unwrap(rstCurrency),
-                    params.zeroForOne,
-                    specifiedAmount,
-                    feeAmount,
-                    rstIsSpecified
-                );
-
-                emit FeeCollected(rstCurrency, feeAmount, "beforeSwap_delta", treasury);
-
-                // Create BeforeSwapDelta: specified token delta = deltaSpecified, unspecified = 0
-                BeforeSwapDelta feeDelta = toBeforeSwapDelta(deltaSpecified, 0);
-                return (IHooks.beforeSwap.selector, feeDelta, 0);
-            }
-        }
-
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /**
-     * @notice _afterSwap: SAFE approach — compute fee based on actual swap result (BalanceDelta),
-     * register it in pendingFees. Actual collection will occur via unlockCallback or via `settlePendingFees`.
+     * @notice After swap - collect and distribute fees
+     * @dev Charges DEFAULT_FEE (10%) and splits: 90% to collection, 10% to treasury
      */
     function _afterSwap(
         address, /* sender */
         PoolKey calldata key,
-        SwapParams calldata /* params */,
+        SwapParams calldata params,
         BalanceDelta delta,
         bytes calldata /* hookData */
     ) internal override returns (bytes4, int128) {
         PoolId poolId = key.toId();
-        require(authorizedPools[poolId], "Unauthorized pool");
+        if (!authorizedPools[poolId]) revert UnauthorizedPool();
 
-        bool rstIsCurrency0 = Currency.unwrap(key.currency0) == restrictedToken;
-        bool rstIsCurrency1 = Currency.unwrap(key.currency1) == restrictedToken;
+        // Determine which currency was swapped and the swap amount
+        bool specifiedTokenIs0 = (params.amountSpecified < 0 == params.zeroForOne);
+        (Currency feeCurrency, int128 swapAmount) =
+            (specifiedTokenIs0) ? (key.currency1, delta.amount1()) : (key.currency0, delta.amount0());
 
-        if (!rstIsCurrency0 && !rstIsCurrency1) {
+        if (swapAmount < 0) swapAmount = -swapAmount;
+
+        // Calculate fee (10% of swap amount)
+        uint128 feeAmount = uint128(swapAmount) * DEFAULT_FEE / TOTAL_BIPS;
+        
+        if (feeAmount == 0) {
             return (IHooks.afterSwap.selector, 0);
         }
 
-        // Extract the balance delta for the restricted token from BalanceDelta.
-        int256 rstSignedDelta;
-        Currency rstCurrency = rstIsCurrency0 ? key.currency0 : key.currency1;
+        // Take fee from pool (quote-safe: swallow failures under STATICCALL)
+        try this.__take(feeCurrency, feeAmount) {} catch {}
 
-        // Use accessor (adapt if your v4-core version has different accessors)
-        rstSignedDelta = rstIsCurrency0 ? int256(delta.amount0()) : int256(delta.amount1());
+        address collection = poolToCollection[poolId];
+        bool ethFee = Currency.unwrap(feeCurrency) == address(0);
 
-        // Compute fee only on the user's side amount
-        uint256 feeAmount = 0;
-        if (rstSignedDelta < 0) {
-            // Pool sent restricted token out => user received restricted token
-            uint256 received = uint256(-rstSignedDelta);
-            feeAmount = (received * FEE_PERCENT) / 100;
-        } else if (rstSignedDelta > 0) {
-            // Pool received restricted token => user gave restricted token
-            uint256 paid = uint256(rstSignedDelta);
-            feeAmount = (paid * FEE_PERCENT) / 100;
+        emit FeeCollected(poolId, feeCurrency, feeAmount, collection);
+
+        // Process fees: convert to ETH if needed, then distribute (quote-safe: wrap)
+        try this.__processFees(key, feeCurrency, feeAmount, collection, ethFee) {} catch {}
+
+        // If factory has router restrictions enabled, clear midSwap flag on token (quote-safe)
+        if (IFeeHookFactory(factory).routerRestrict()) {
+            try IRestrictedToken(collection).setMidSwap(false) {} catch {}
         }
 
-        if (feeAmount > 0) {
-            // Record pending fee for this pool + currency only — settlement will clear and increment feesOwedToTreasury.
-            pendingFees[poolId][rstCurrency] += feeAmount;
-
-            // IMPORTANT: Do NOT increment feesOwedToTreasury here. That counter should reflect amounts actually transferred.
-            emit FeeCollected(rstCurrency, feeAmount, "afterSwap_pending", treasury);
-        }
-
-        // No delta returned here; settlement will occur via unlockCallback/settlePendingFees.
-        return (IHooks.afterSwap.selector, 0);
+        return (IHooks.afterSwap.selector, int128(feeAmount));
     }
 
-    /**
-     * === unlockCallback settlement flow ===
-     * - PoolManager will call our unlockCallback after unlock(); ensure only poolManager does this
-     * - We expect the calldata to be concatenated abi.encode(...) chunks where each chunk is:
-     *   abi.encode(uint8 action, PoolId poolId, Currency currency, uint256 amount)
-     *
-     * NOTE: adapt the poolManager.take/settle signatures to the version of v4-core you compile with.
-     */
-    function unlockCallback(bytes calldata data) external {
-        require(msg.sender == address(poolManager), "Only PoolManager");
+    // Internal helper callable via external try/catch (separate context to avoid revert bubbling)
+    function __take(Currency feeCurrency, uint256 feeAmount) external {
+        require(msg.sender == address(this), "only self");
+        poolManager.take(feeCurrency, address(this), feeAmount);
+    }
 
-        // Fixed encoded-size approach is brittle across types; we will decode sequentially using offsets
-        uint256 offset = 0;
-        while (offset < data.length) {
-            // Decode one tuple from data starting at offset
-            bytes memory slice = new bytes(data.length - offset);
-            for (uint256 i = 0; i < slice.length; ++i) {
-                slice[i] = data[offset + i];
-            }
-
-            // decode expected tuple
-            (uint8 actionType, PoolId poolId, Currency currency, uint256 amount) = abi.decode(slice, (uint8, PoolId, Currency, uint256));
-
-            // compute size of the encoded tuple to advance offset:
-            // all types are fixed-size in abi.encode -> 32 * 4 = 128 bytes.
-            uint256 encodedTupleSize = 32 * 4; // 128
-
-            // advance offset for next iteration
-            offset += encodedTupleSize;
-
-            address tokenAddr = Currency.unwrap(currency);
-
-            if (actionType == 1) {
-                // Positive-delta collection: ensure pending amount exists for this poolId+currency
-                uint256 available = pendingFees[poolId][currency];
-                require(available >= amount, "Insufficient pending fees");
-
-                // Clear pending record first to avoid reentrancy issues (checks-effects)
-                pendingFees[poolId][currency] = available - amount;
-
-                // Call poolManager.take to collect accounting amount to this hook
-                poolManager.take(currency, address(this), amount);
-
-                // Transfer tokens to treasury (external call)
-                require(IERC20(tokenAddr).transfer(treasury, amount), "transfer failed");
-
-                // reconcile bookkeeping: increment collected/settled counter
-                feesOwedToTreasury[currency] += amount;
-
-                emit PendingFeesSettled(poolId, currency, amount, treasury);
-            } else if (actionType == 2) {
-                // Negative-delta settle flow: left to implementation per your poolManager API
-                revert("Negative-delta settle flow must be implemented per your poolManager API");
-            } else {
-                revert("Unknown action");
-            }
+    function __processFees(
+        PoolKey calldata key,
+        Currency feeCurrency,
+        uint256 feeAmount,
+        address collection,
+        bool ethFee
+    ) external {
+        require(msg.sender == address(this), "only self");
+        if (!ethFee) {
+            uint256 feeInETH = _swapToEth(key, feeCurrency, feeAmount);
+            _processFees(collection, feeInETH);
+        } else {
+            _processFees(collection, feeAmount);
         }
     }
 
     /**
-     * @notice Owner helper: settle pending fees for a given poolId & currency.
-     * This allows local testing and manual settlement if unlockCallback isn't used or you want to
-     * drive settlement from offchain tooling. Adapt poolManager.take signature if needed.
+     * @notice Swap collected token fees to ETH
+     * @param key Pool key
+     * @param currency Currency to swap
+     * @param amount Amount to swap
+     * @return ETH amount received
      */
-    function settlePendingFees(PoolId poolId, Currency currency) external onlyOwner {
-        uint256 amount = pendingFees[poolId][currency];
-        require(amount > 0, "No pending fees");
+    function _swapToEth(
+        PoolKey memory key,
+        Currency currency,
+        uint256 amount
+    ) internal returns (uint256) {
+        uint256 ethBefore = address(this).balance;
+        
+        // Determine swap direction based on which currency we're swapping
+        bool zeroForOne = Currency.unwrap(key.currency1) == Currency.unwrap(currency);
+        
+        BalanceDelta delta = poolManager.swap(
+            key,
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: -int256(amount),
+                sqrtPriceLimitX96: zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
+            }),
+            bytes("")
+        );
 
-        // clear pending record first to avoid reentrancy issues
-        pendingFees[poolId][currency] = 0;
+        // Settle the swap
+        if (delta.amount0() < 0) {
+            key.currency0.settle(poolManager, address(this), uint256(int256(-delta.amount0())), false);
+        } else if (delta.amount0() > 0) {
+            key.currency0.take(poolManager, address(this), uint256(int256(delta.amount0())), false);
+        }
 
-        // call poolManager.take to collect accounting amount to this hook
-        poolManager.take(currency, address(this), amount);
+        if (delta.amount1() < 0) {
+            key.currency1.settle(poolManager, address(this), uint256(int256(-delta.amount1())), false);
+        } else if (delta.amount1() > 0) {
+            key.currency1.take(poolManager, address(this), uint256(int256(delta.amount1())), false);
+        }
 
-        // transfer to treasury
-        address tokenAddr = Currency.unwrap(currency);
-        require(IERC20(tokenAddr).transfer(treasury, amount), "transfer failed");
-
-        // reconcile bookkeeping: increment collected counter (fees actually transferred)
-        feesOwedToTreasury[currency] += amount;
-
-        emit PendingFeesSettled(poolId, currency, amount, treasury);
+        return address(this).balance - ethBefore;
     }
 
-    // View helpers
-    function getAccumulatedFees(Currency currency) external view returns (uint256) {
-        // feesOwedToTreasury now represents total successfully transferred to treasury
-        return feesOwedToTreasury[currency];
+    /**
+     * @notice Process and distribute fees: 90% to collection, 10% to treasury
+     * @param collection Collection address
+     * @param feeAmount Total fee amount in ETH
+     */
+    function _processFees(address collection, uint256 feeAmount) internal {
+        if (feeAmount == 0) return;
+        
+        // 90% to collection, 10% to treasury/owner
+        uint256 collectionAmount = (feeAmount * 90) / 100;
+        uint256 treasuryAmount = feeAmount - collectionAmount;
+
+        // Send 90% to collection's addFees function (skip silently if not supported / quoting)
+        try INFTStrategy(collection).addFees{value: collectionAmount}() {} catch {}
+        
+        // Send 10% to treasury (or custom fee address if set by collection owner)
+        address feeRecipient = feeAddressClaimedByOwner[collection];
+        if (feeRecipient == address(0)) {
+            feeRecipient = treasury;
+        }
+        
+        // Force safe ETH transfer (skip on failure during quotes)
+        _forceSafeTransferETH(feeRecipient, treasuryAmount);
+
+        emit FeeProcessed(collection, collectionAmount, treasuryAmount);
     }
 
-    function getPendingFees(PoolId poolId, Currency currency) external view returns (uint256) {
-        return pendingFees[poolId][currency];
+    /**
+     * @notice Force safe ETH transfer with retry mechanism
+     * @dev Mimics SafeTransferLib.forceSafeTransferETH from solady
+     * @param to Recipient address
+     * @param amount Amount of ETH to send
+     */
+    function _forceSafeTransferETH(address to, uint256 amount) internal {
+        // Attempt normal transfer first
+        (bool success, ) = to.call{value: amount}("");
+        if (!success) {
+            // On quoting (STATICCALL) or recipient failure, just skip without reverting
+            return;
+        }
     }
 
-    function isPoolAuthorized(PoolId poolId) external view returns (bool) {
-        return authorizedPools[poolId];
+    /**
+     * @notice Allow collection owner to set custom fee address
+     * @param collection Collection address
+     * @param destination Custom fee recipient address
+     */
+    function updateFeeAddressForCollection(address collection, address destination) external {
+        if (IERC721(collection).owner() != msg.sender) revert NotCollectionOwner();
+        feeAddressClaimedByOwner[collection] = destination;
+        emit CollectionFeeAddressSet(collection, destination);
     }
 
-    // Admin
+    /**
+     * @notice Admin override for setting collection fee address
+     * @param collection Collection address
+     * @param destination Custom fee recipient address
+     */
+    function adminUpdateFeeAddress(address collection, address destination) external onlyOwner {
+        feeAddressClaimedByOwner[collection] = destination;
+        emit CollectionFeeAddressSet(collection, destination);
+    }
+
+    // Admin functions
     function setTreasury(address _treasury) external onlyOwner {
-        require(_treasury != address(0), "Invalid treasury");
+        if (_treasury == address(0)) revert InvalidTreasury();
         treasury = _treasury;
         emit TreasurySet(_treasury);
     }
 
-    function setRestrictedToken(address _token) external onlyOwner {
-        require(_token != address(0), "Invalid token");
-        restrictedToken = _token;
-        emit RestrictedTokenSet(_token);
+    function setFactory(address _factory) external onlyOwner {
+        if (_factory == address(0)) revert InvalidFactory();
+        factory = _factory;
+        emit FactorySet(_factory);
     }
 
     function transferOwnership(address _newOwner) external onlyOwner {
@@ -325,15 +363,40 @@ contract FeeHook is BaseHook {
         owner = _newOwner;
     }
 
-    function clearFeeRecords(Currency currency) external onlyOwner {
-        feesOwedToTreasury[currency] = 0;
+    // View functions
+    function isPoolAuthorized(PoolId poolId) external view returns (bool) {
+        return authorizedPools[poolId];
+    }
+
+    function getCollectionForPool(PoolId poolId) external view returns (address) {
+        return poolToCollection[poolId];
+    }
+
+    function getPoolForCollection(address collection) external view returns (PoolId) {
+        return collectionToPool[collection];
+    }
+
+    /**
+     * @notice Helper to validate router transfers (called by factory)
+     * @param to Recipient address
+     * @param from Sender address
+     * @param tokenAddress Token being transferred
+     * @return True if transfer should be allowed
+     */
+    function validateRouterTransfer(
+        address to,
+        address from,
+        address tokenAddress
+    ) external view returns (bool) {
+        // Delegate to factory's validTransfer function
+        return IFeeHookFactory(factory).validTransfer(to, from, tokenAddress);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
-            beforeAddLiquidity: false,
+            beforeAddLiquidity: true,
             beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
@@ -341,10 +404,12 @@ contract FeeHook is BaseHook {
             afterSwap: true,
             beforeDonate: false,
             afterDonate: false,
-            beforeSwapReturnDelta: true,
+            beforeSwapReturnDelta: false,
             afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
     }
+
+    receive() external payable {}
 }
