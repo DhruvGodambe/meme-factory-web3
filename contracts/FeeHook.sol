@@ -37,7 +37,7 @@ contract FeeHook is BaseHook {
     // Bookkeeping: fees that have been "recorded" and awaiting settlement (per pool + currency)
     mapping(PoolId => mapping(Currency => uint256)) public pendingFees;
 
-    // Track accumulated fees owed for bookkeeping (historical/tracking)
+    // Track accumulated fees actually transferred to treasury (historical/tracking)
     mapping(Currency => uint256) public feesOwedToTreasury;
 
     // Events
@@ -62,7 +62,7 @@ contract FeeHook is BaseHook {
         BaseHook(_poolManager)
     {
         require(_treasury != address(0), "Invalid treasury");
-        require(_restrictedToken != address(0), "Invalid token");
+        require(_restrictedToken != address(0), "Invalid restrictedToken");
         treasury = _treasury;
         restrictedToken = _restrictedToken;
         owner = msg.sender;
@@ -84,9 +84,9 @@ contract FeeHook is BaseHook {
     }
 
     /**
-     * @notice beforeSwap: unchanged (no fee deduction here). We keep behavior as-is:
-     * - If restricted token is specified token we may still compute specified-side fee (existing logic)
-     *   But by default the safe path computes fee in _afterSwap and settles later.
+     * @notice beforeSwap: unchanged for returning the BeforeSwapDelta but DO NOT
+     * immediately increment feesOwedToTreasury. Instead return delta for accounting and
+     * record only debug/event info. Actual pendingFees will be recorded in _afterSwap.
      */
     function _beforeSwap(
         address, /* sender */
@@ -104,7 +104,7 @@ contract FeeHook is BaseHook {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // Keep original behavior for specified-token fee (unchanged) — same logic you had.
+        // Keep original behavior for specified-token fee (unchanged) — but DO NOT record pending fee here.
         int256 specifiedAmount = params.amountSpecified;
 
         bool rstIsSpecified = false;
@@ -126,10 +126,8 @@ contract FeeHook is BaseHook {
             require(feeAmount <= absAmount, "Fee exceeds amount");
 
             if (feeAmount > 0) {
-                // Bookkeeping
-                feesOwedToTreasury[rstCurrency] += feeAmount;
-
-                // compute deltaSpecified according to exact-input (neg) / exact-output (pos)
+                // NOTE: Do NOT add to pendingFees or feesOwedToTreasury here to avoid double-counting.
+                // We still return the BeforeSwapDelta so pool accounting adjusts the swap.
                 int128 deltaSpecified;
                 if (specifiedAmount < 0) {
                     // exact-input: user gives tokens; positive delta means hook "takes" some of the specified token
@@ -139,7 +137,7 @@ contract FeeHook is BaseHook {
                     deltaSpecified = -int128(int256(feeAmount));
                 }
 
-                // Debug event to aid tracing from tx logs
+                // Debug event for tracing
                 emit FeeDebug(
                     Currency.unwrap(rstCurrency),
                     params.zeroForOne,
@@ -148,7 +146,7 @@ contract FeeHook is BaseHook {
                     rstIsSpecified
                 );
 
-                emit FeeCollected(rstCurrency, feeAmount, "beforeSwap", treasury);
+                emit FeeCollected(rstCurrency, feeAmount, "beforeSwap_delta", treasury);
 
                 // Create BeforeSwapDelta: specified token delta = deltaSpecified, unspecified = 0
                 BeforeSwapDelta feeDelta = toBeforeSwapDelta(deltaSpecified, 0);
@@ -161,13 +159,12 @@ contract FeeHook is BaseHook {
 
     /**
      * @notice _afterSwap: SAFE approach — compute fee based on actual swap result (BalanceDelta),
-     * register it in pendingFees and emit events. Actual collection (poolManager.take + transfer)
-     * will occur via unlockCallback (PoolManager) or via `settlePendingFees` (owner helper).
+     * register it in pendingFees. Actual collection will occur via unlockCallback or via `settlePendingFees`.
      */
     function _afterSwap(
         address, /* sender */
         PoolKey calldata key,
-        SwapParams calldata params,
+        SwapParams calldata /* params */,
         BalanceDelta delta,
         bytes calldata /* hookData */
     ) internal override returns (bytes4, int128) {
@@ -182,79 +179,88 @@ contract FeeHook is BaseHook {
         }
 
         // Extract the balance delta for the restricted token from BalanceDelta.
-        // Note: BalanceDelta field names/types may vary by v4-core version. Adapt if necessary.
-        // Commonly delta.amount0 / delta.amount1 exist and are signed.
         int256 rstSignedDelta;
         Currency rstCurrency = rstIsCurrency0 ? key.currency0 : key.currency1;
 
-        // Try getting correct delta component
+        // Use accessor (adapt if your v4-core version has different accessors)
         rstSignedDelta = rstIsCurrency0 ? int256(delta.amount0()) : int256(delta.amount1());
 
-        // absolute amount the pool moved for restricted token (how much user received or gave)
-        uint256 absAmount = rstSignedDelta < 0 ? uint256(-rstSignedDelta) : uint256(rstSignedDelta);
-
-        // If user got restricted token (absAmount > 0) compute fee
-        if (absAmount > 0) {
-            uint256 feeAmount = (absAmount * FEE_PERCENT) / 100;
-            if (feeAmount > 0) {
-                // record pending fee for this pool+cURRENCY
-                pendingFees[poolId][rstCurrency] += feeAmount;
-                feesOwedToTreasury[rstCurrency] += feeAmount;
-
-                emit FeeCollected(rstCurrency, feeAmount, "afterSwap", treasury);
-            }
+        // Compute fee only on the user's side amount
+        uint256 feeAmount = 0;
+        if (rstSignedDelta < 0) {
+            // Pool sent restricted token out => user received restricted token
+            uint256 received = uint256(-rstSignedDelta);
+            feeAmount = (received * FEE_PERCENT) / 100;
+        } else if (rstSignedDelta > 0) {
+            // Pool received restricted token => user gave restricted token
+            uint256 paid = uint256(rstSignedDelta);
+            feeAmount = (paid * FEE_PERCENT) / 100;
         }
 
-        // We don't return any additional delta here. Settlement occurs later via unlockCallback/settlePendingFees.
+        if (feeAmount > 0) {
+            // Record pending fee for this pool + currency only — settlement will clear and increment feesOwedToTreasury.
+            pendingFees[poolId][rstCurrency] += feeAmount;
+
+            // IMPORTANT: Do NOT increment feesOwedToTreasury here. That counter should reflect amounts actually transferred.
+            emit FeeCollected(rstCurrency, feeAmount, "afterSwap_pending", treasury);
+        }
+
+        // No delta returned here; settlement will occur via unlockCallback/settlePendingFees.
         return (IHooks.afterSwap.selector, 0);
     }
 
     /**
      * === unlockCallback settlement flow ===
      * - PoolManager will call our unlockCallback after unlock(); ensure only poolManager does this
-     * - We accept encoded operations (same as before) OR we can be called (by owner) to settle stored pendingFees
-     *
-     * The encoded op format (per-entry): abi.encodePacked(uint8 action, bytes32 currency, uint256 amount)
-     * actionType:
-     *  1 = collect positive delta (call poolManager.take -> then transfer ERC20 to treasury)
-     *  2 = settle negative delta (transfer tokens from hook to poolManager then poolManager.settle) -- not implemented
+     * - We expect the calldata to be concatenated abi.encode(...) chunks where each chunk is:
+     *   abi.encode(uint8 action, PoolId poolId, Currency currency, uint256 amount)
      *
      * NOTE: adapt the poolManager.take/settle signatures to the version of v4-core you compile with.
      */
     function unlockCallback(bytes calldata data) external {
         require(msg.sender == address(poolManager), "Only PoolManager");
 
+        // Fixed encoded-size approach is brittle across types; we will decode sequentially using offsets
         uint256 offset = 0;
         while (offset < data.length) {
-            // decode a fixed-size chunk (1 + 32 + 32 = 65 bytes)
-            require(data.length >= offset + 65, "Bad data length");
-            bytes memory chunk = data[offset: offset + 65];
-            (uint8 actionType, Currency currency, uint256 amount) = abi.decode(chunk, (uint8, Currency, uint256));
-            offset += 65;
+            // Decode one tuple from data starting at offset
+            bytes memory slice = new bytes(data.length - offset);
+            for (uint256 i = 0; i < slice.length; ++i) {
+                slice[i] = data[offset + i];
+            }
+
+            // decode expected tuple
+            (uint8 actionType, PoolId poolId, Currency currency, uint256 amount) = abi.decode(slice, (uint8, PoolId, Currency, uint256));
+
+            // compute size of the encoded tuple to advance offset:
+            // all types are fixed-size in abi.encode -> 32 * 4 = 128 bytes.
+            uint256 encodedTupleSize = 32 * 4; // 128
+
+            // advance offset for next iteration
+            offset += encodedTupleSize;
 
             address tokenAddr = Currency.unwrap(currency);
 
             if (actionType == 1) {
-                // Positive-delta collection: poolManager should allow us to take accounting funds
-                // ADAPT: poolManager.take signature may differ by v4-core version
+                // Positive-delta collection: ensure pending amount exists for this poolId+currency
+                uint256 available = pendingFees[poolId][currency];
+                require(available >= amount, "Insufficient pending fees");
+
+                // Clear pending record first to avoid reentrancy issues (checks-effects)
+                pendingFees[poolId][currency] = available - amount;
+
+                // Call poolManager.take to collect accounting amount to this hook
                 poolManager.take(currency, address(this), amount);
 
-                // Transfer tokens to treasury
+                // Transfer tokens to treasury (external call)
                 require(IERC20(tokenAddr).transfer(treasury, amount), "transfer failed");
 
-                // reconcile bookkeeping: reduce pendingFees if present
-                // NOTE: we don't know poolId here: PoolManager passes unlockCallback for a specific pool context,
-                // but if needed you can include poolId in the encoded data to zero the correct entry.
-                // For safety, we attempt to reduce feesOwedToTreasury and leave pendingFees as-is unless caller encoded poolId.
-                if (feesOwedToTreasury[currency] >= amount) {
-                    feesOwedToTreasury[currency] -= amount;
-                } else {
-                    feesOwedToTreasury[currency] = 0;
-                }
+                // reconcile bookkeeping: increment collected/settled counter
+                feesOwedToTreasury[currency] += amount;
 
-                emit PendingFeesSettled(PoolId.wrap(bytes32(uint256(0))), currency, amount, treasury); // poolId unknown in this encoded flow
+                emit PendingFeesSettled(poolId, currency, amount, treasury);
             } else if (actionType == 2) {
-                // Negative-delta settle flow left as before - implement according to your poolManager API
+                // Negative-delta settle flow: left to implementation per your poolManager API
                 revert("Negative-delta settle flow must be implemented per your poolManager API");
             } else {
                 revert("Unknown action");
@@ -275,25 +281,21 @@ contract FeeHook is BaseHook {
         pendingFees[poolId][currency] = 0;
 
         // call poolManager.take to collect accounting amount to this hook
-        // ADAPT: check poolManager.take signature for your v4-core version
         poolManager.take(currency, address(this), amount);
 
         // transfer to treasury
         address tokenAddr = Currency.unwrap(currency);
         require(IERC20(tokenAddr).transfer(treasury, amount), "transfer failed");
 
-        // reconcile bookkeeping
-        if (feesOwedToTreasury[currency] >= amount) {
-            feesOwedToTreasury[currency] -= amount;
-        } else {
-            feesOwedToTreasury[currency] = 0;
-        }
+        // reconcile bookkeeping: increment collected counter (fees actually transferred)
+        feesOwedToTreasury[currency] += amount;
 
         emit PendingFeesSettled(poolId, currency, amount, treasury);
     }
 
     // View helpers
     function getAccumulatedFees(Currency currency) external view returns (uint256) {
+        // feesOwedToTreasury now represents total successfully transferred to treasury
         return feesOwedToTreasury[currency];
     }
 
@@ -340,7 +342,7 @@ contract FeeHook is BaseHook {
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: true,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
