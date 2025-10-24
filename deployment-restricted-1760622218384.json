@@ -1,0 +1,14 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": 1760622218384,
+  "token": "0x1cbc3AFAc0097C57AB8AB185b9FA03783e27B3aC",
+  "config": {
+    "POOL_MANAGER": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+    "FEE_HOOK": "0xC565bb8f7F2d6d6cb5B2aD7518E8631d4d41a8C4",
+    "ROUTER": "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b",
+    "TREASURY": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+    "tradingEnabled": true,
+    "enforceHookOnly": true
+  }
+}
