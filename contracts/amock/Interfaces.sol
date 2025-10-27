@@ -139,6 +139,15 @@ interface INFTStrategy {
     function updateSymbol(string memory _tokenSymbol) external;
     function setMidSwap(bool value) external;
     function midSwap() external view returns (bool);
+    function increaseTransferAllowance(uint256 amountAllowed) external;
+    function initialize(
+        address _collection,
+        address _hook,
+        string memory _tokenName,
+        string memory _tokenSymbol,
+        uint256 _buyIncrement,
+        address _owner
+    ) external;
 }
 
 interface INFTStrategyFactory {
@@ -151,10 +160,21 @@ interface INFTStrategyFactory {
     function routerRestrict() external view returns (bool);
     function setRouterRestrict(bool status) external;
     function validTransfer(address to, address from, address tokenAddress) external view returns (bool);
+    function updateHookAddress(address _hookAddress) external;
+    function updateLauncher(address _launcher, bool _authorized) external;
+    function updateTokenName(address nftStrategy, string memory tokenName) external;
+    function updateTokenSymbol(address nftStrategy, string memory tokenSymbol) external;
+    function updatePriceMultiplier(address nftStrategy, uint256 newMultiplier) external;
+    function processTokenTwap() external;
+    function checkIfAlreadyLaunched(address collection) external view returns (bool);
 }
 
 interface INFTStrategyHook {
     function adminUpdateFeeAddress(address collection, address destination) external;
+    function updateFeeAddress(address _feeAddress) external;
+    function updateFeeAddressForCollection(address nftStrategy, address destination) external;
+    function calculateFee(address collection, bool isBuying) external view returns (uint128);
+    function getHookPermissions() external pure returns (Hooks.Permissions memory);
 }
 
 

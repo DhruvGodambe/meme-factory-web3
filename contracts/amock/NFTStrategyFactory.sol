@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-import {Ownable} from "solady/auth/Ownable.sol";
+import {Ownable} from "solady/src/auth/Ownable.sol";
 import {NFTStrategy} from "./NFTStrategy.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {SafeTransferLib} from "solady/src/utils/SafeTransferLib.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IAllowanceTransfer} from "./IAllowanceTransfer.sol";
+import {IAllowanceTransfer} from "@uniswap/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -14,8 +14,8 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import "./Interfaces.sol";
-import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
-import {LibClone} from "solady/utils/LibClone.sol";
+import {ReentrancyGuard} from "solady/src/utils/ReentrancyGuard.sol";
+import {LibClone} from "solady/src/utils/LibClone.sol";
 
 /// @title NFTStrategyFactory - Factory for deploying NFTStrategy contracts
 /// @author TokenWorks (https://token.works/)
@@ -60,10 +60,10 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     /// @notice Uniswap V4 Pool Manager for pool operations
     IPoolManager private immutable poolManager;
 
-    /// @notice PunkStrategy token contract address
-    address public constant PNKSTR_ADDRESS = 0xc50673EDb3A7b94E8CAD8a7d4E0cD68864E33eDF;
-    /// @notice PunkStrategy hook contract address
-    address public constant PNKSTR_HOOK_ADDRESS = 0xfAaad5B731F52cDc9746F2414c823eca9B06E844;
+    /// @notice RestrictedToken token contract address
+    address public constant RESTRICTED_TOKEN_ADDRESS = 0x04fD8C3d616E33f1d19d6cbE71142C32784A23A1;
+    /// @notice NFTStrategyHook contract address
+    address public constant NFT_STRATEGY_HOOK_ADDRESS = 0x423660071Fe05a8b7BD77F29b9CD5bB4A6C8A8c4;
     /// @notice Dead address for burning tokens
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     /// @notice Previous factory contract address for migration checks
@@ -89,9 +89,9 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     address public feeAddress;
     /// @notice Implementation contract for NFTStrategy proxies
     address public nftStrategyImplementation;
-    /// @notice TWAP increment when buying PNKSTR tokens
+    /// @notice TWAP increment when buying RestrictedToken tokens
     uint256 public twapIncrement = 1 ether;
-    /// @notice TWAP delay in blocks when buying PNKSTR tokens
+    /// @notice TWAP delay in blocks when buying RestrictedToken tokens
     uint256 public twapDelayInBlocks = 1;
     /// @notice Last block number when TWAP was executed
     uint256 public lastTwapBlock;
@@ -174,6 +174,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         nftStrategyImplementation = _nftStrategyImplementation;
     }
 
+
     /// @notice Disables the upgradeability of new NFTStrategy launches
     /// @dev Only callable by owner
     function disableLaunchUpgradeable() external onlyOwner {
@@ -240,6 +241,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     function updatePriceMultiplier(address nftStrategy, uint256 newMultiplier) external onlyOwner {
         INFTStrategy(nftStrategy).setPriceMultiplier(newMultiplier);
     }
+
 
     /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                  INTERNAL FUNCTIONS                 */
@@ -324,12 +326,12 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         return (actions, params);
     }
 
-    /// @notice Buys PNKSTR tokens with ETH and burns them by sending to dead address
-    /// @param amountIn The amount of ETH to spend on PNKSTR tokens
-    /// @dev Uses PunkStrategy pool to swap ETH for PNKSTR and burn
-    function _buyAndBurnPNKSTR(uint256 amountIn) internal {
+    /// @notice Buys RestrictedToken tokens with ETH and burns them by sending to dead address
+    /// @param amountIn The amount of ETH to spend on RestrictedToken tokens
+    /// @dev Uses RestrictedToken pool to swap ETH for RestrictedToken and burn
+    function _buyAndBurnRestrictedToken(uint256 amountIn) internal {
         PoolKey memory key =
-            PoolKey(Currency.wrap(address(0)), Currency.wrap(PNKSTR_ADDRESS), 0, 60, IHooks(PNKSTR_HOOK_ADDRESS));
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(RESTRICTED_TOKEN_ADDRESS), 0, 60, IHooks(NFT_STRATEGY_HOOK_ADDRESS));
 
         router.swapExactTokensForTokens{value: amountIn}(amountIn, 0, true, key, "", DEAD_ADDRESS, block.timestamp);
     }
@@ -379,9 +381,9 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         return nftStrategy;
     }
 
-    /// @notice Processes PNKSTR token buyback using TWAP mechanism
+    /// @notice Processes RestrictedToken token buyback using TWAP mechanism
     /// @dev Can be called once every twapDelayInBlocks, caller receives 0.5% reward
-    /// @dev Uses contract's ETH balance to buy and burn PNKSTR tokens
+    /// @dev Uses contract's ETH balance to buy and burn RestrictedToken tokens
     function processTokenTwap() external nonReentrant {
         uint256 balance = address(this).balance;
         if (balance == 0) revert NoETHToTwap();
@@ -402,11 +404,12 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         // Update state
         lastTwapBlock = block.number;
 
-        _buyAndBurnPNKSTR(burnAmount);
+        _buyAndBurnRestrictedToken(burnAmount);
 
         // Send reward to caller
         SafeTransferLib.forceSafeTransferETH(msg.sender, reward);
     }
+
 
     /// @notice Checks if a collection already has a strategy launched
     /// @param collection The address of the NFT collection to check

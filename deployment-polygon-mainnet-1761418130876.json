@@ -1,0 +1,18 @@
+{
+  "network": "polygon-mainnet",
+  "chainId": 137,
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "poolManager": "0x67366782805870060151383f4bbff9dab53e5cd6",
+  "positionManager": "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
+  "universalRouter": "0x1095692a6237d83c6a72f3f5efedb9a670c49223",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "contracts": {
+    "restrictedToken": "0x04fD8C3d616E33f1d19d6cbE71142C32784A23A1",
+    "hookMiner": "0x68A12E89A276e9b66ADCf917FB0D0A114299bEEa",
+    "nftStrategyFactory": "0x709384E6d68E1e35e9F06bD7a43cCe5A3c04C1c0",
+    "minedHookAddress": "0x423660071Fe05a8b7BD77F29b9CD5bB4A6C8A8c4",
+    "minedSalt": "0x00000000000000000000000000000000000000000000000000000000000026f8",
+    "hook": "0x423660071Fe05a8b7BD77F29b9CD5bB4A6C8A8c4"
+  },
+  "timestamp": "2025-10-25T18:48:50.876Z"
+}

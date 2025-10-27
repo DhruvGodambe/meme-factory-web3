@@ -13,9 +13,10 @@ import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {IPunkStrategy, IValidRouter} from "./Interfaces.sol";
-import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
+import {SafeTransferLib} from "solady/src/utils/SafeTransferLib.sol";
+import {RestrictedToken} from "../RestrictedToken.sol";
+import {IValidRouter} from "./Interfaces.sol";
+import {ReentrancyGuard} from "solady/src/utils/ReentrancyGuard.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import "./Interfaces.sol";
@@ -62,7 +63,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
-    IPunkStrategy immutable punkStrategy;
+    RestrictedToken immutable restrictedToken;
     INFTStrategyFactory immutable nftStrategyFactory;
     IPoolManager immutable manager;
     address public feeAddress;
@@ -96,17 +97,17 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
     /// @notice Constructor initializes the hook with required dependencies
     /// @param _poolManager The Uniswap V4 Pool Manager interface
-    /// @param _punkStrategy The PunkStrategy token contract
+    /// @param _restrictedToken The RestrictedToken contract
     /// @param _nftStrategyFactory The NFTStrategyFactory token contract
     /// @param _feeAddress Address to send a portion of the fees
     constructor(
         IPoolManager _poolManager,
-        IPunkStrategy _punkStrategy,
+        RestrictedToken _restrictedToken,
         INFTStrategyFactory _nftStrategyFactory,
         address _feeAddress
     ) BaseHook(_poolManager) {
         manager = _poolManager;
-        punkStrategy = _punkStrategy;
+        restrictedToken = _restrictedToken;
         nftStrategyFactory = _nftStrategyFactory;
         feeAddress = _feeAddress;
     }
@@ -153,7 +154,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         // Deposit fees into NFTStrategy collection
         INFTStrategy(collection).addFees{value: depositAmount}();
         
-        // Send fees to nftStrategyFactory to buy and burn PNKSTR
+        // Send fees to nftStrategyFactory to buy and burn RestrictedToken
         SafeTransferLib.forceSafeTransferETH(address(nftStrategyFactory), pnkstrAmount);
         
         // Send remainder to feeAddressClaimedByOwner if claimed, otherwise feeAddress
