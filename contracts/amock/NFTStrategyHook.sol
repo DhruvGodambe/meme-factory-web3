@@ -1,4 +1,4 @@
-// Soon// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.20;
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
@@ -15,91 +15,51 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeTransferLib} from "solady/src/utils/SafeTransferLib.sol";
 import {RestrictedToken} from "../RestrictedToken.sol";
-import {IValidRouter} from "./Interfaces.sol";
 import {ReentrancyGuard} from "solady/src/utils/ReentrancyGuard.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import "./Interfaces.sol";
 
 /// @title NFTStrategyHook - Uniswap V4 Hook for NFTStrategy
-/// @author TokenWorks (https://token.works/)
 contract NFTStrategyHook is BaseHook, ReentrancyGuard {
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™                ™™™™™™™™™™™                ™™™™™™™™™™™ */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™               ™™™™™™™™™™™™™              ™™™™™™™™™™  */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™              ™™™™™™™™™™™™™              ™™™™™™™™™™™  */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™             ™™™™™™™™™™™™™™            ™™™™™™™™™™™   */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™            ™™™™™™™™™™™™™™™            ™™™™™™™™™™™   */
-    /*                ™™™™™™™™™™™            ™™™™™™™™™™™           ™™™™™™™™™™™™™™™           ™™™™™™™™™™™    */
-    /*                ™™™™™™™™™™™             ™™™™™™™™™™          ™™™™™™™™™™™™™™™™™          ™™™™™™™™™™™    */
-    /*                ™™™™™™™™™™™             ™™™™™™™™™™          ™™™™™™™™™™™™™™™™™          ™™™™™™™™™™     */
-    /*                ™™™™™™™™™™™              ™™™™™™™™™™        ™™™™™™™™™™™™™™™™™™™        ™™™™™™™™™™™     */
-    /*                ™™™™™™™™™™™              ™™™™™™™™™™™       ™™™™™™™™™ ™™™™™™™™™       ™™™™™™™™™™™      */
-    /*                ™™™™™™™™™™™               ™™™™™™™™™™      ™™™™™™™™™™ ™™™™™™™™™™      ™™™™™™™™™™™      */
-    /*                ™™™™™™™™™™™               ™™™™™™™™™™      ™™™™™™™™™   ™™™™™™™™™      ™™™™™™™™™™       */
-    /*                ™™™™™™™™™™™                ™™™™™™™™™™    ™™™™™™™™™™    ™™™™™™™™™    ™™™™™™™™™™        */
-    /*                ™™™™™™™™™™™                 ™™™™™™™™™™   ™™™™™™™™™     ™™™™™™™™™™  ™™™™™™™™™™™        */
-    /*                ™™™™™™™™™™™                 ™™™™™™™™™™  ™™™™™™™™™™     ™™™™™™™™™™  ™™™™™™™™™™         */
-    /*                ™™™™™™™™™™™                  ™™™™™™™™™™™™™™™™™™™™       ™™™™™™™™™™™™™™™™™™™™          */
-    /*                ™™™™™™™™™™™                   ™™™™™™™™™™™™™™™™™™         ™™™™™™™™™™™™™™™™™™           */
-    /*                ™™™™™™™™™™™                   ™™™™™™™™™™™™™™™™™™         ™™™™™™™™™™™™™™™™™™           */
-    /*                ™™™™™™™™™™™                    ™™™™™™™™™™™™™™™™           ™™™™™™™™™™™™™™™™            */
-    /*                ™™™™™™™™™™™                     ™™™™™™™™™™™™™™             ™™™™™™™™™™™™™™             */
-    /*                ™™™™™™™™™™™                     ™™™™™™™™™™™™™™             ™™™™™™™™™™™™™™             */
-    /*                ™™™™™™™™™™™                      ™™™™™™™™™™™™               ™™™™™™™™™™™™              */
-
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using CurrencySettler for Currency;
     using SafeCast for uint256;
     using SafeCast for int128;
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                      CONSTANTS                      */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
     uint128 private constant TOTAL_BIPS = 10000;
-    uint128 private constant DEFAULT_FEE = 1000; // 10%
-    uint128 private constant STARTING_BUY_FEE = 9500; // 95%
+    uint128 private constant DEFAULT_FEE = 1500;
+    uint128 private constant STARTING_BUY_FEE = 9500;
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
     RestrictedToken immutable restrictedToken;
-    INFTStrategyFactory immutable nftStrategyFactory;
-    IPoolManager immutable manager;
+    INFTStrategyFactory public nftStrategyFactory;
+    IPoolManager public manager;
     address public feeAddress;
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                   STATE VARIABLES                   */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
     mapping(address => uint256) public deploymentBlock;
     mapping(address => address) public feeAddressClaimedByOwner;
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                    CUSTOM ERRORS                    */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
     error NotNFTStrategy();
     error NotNFTStrategyFactoryOwner();
     error InvalidCollection();
     error NotCollectionOwner();
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                    CUSTOM EVENTS                    */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
     event HookFee(bytes32 indexed id, address indexed sender, uint128 feeAmount0, uint128 feeAmount1);
     event Trade(address indexed nftStrategy, uint160 sqrtPriceX96, int128 ethAmount, int128 tokenAmount);
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                     CONSTRUCTOR                     */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
-    /// @notice Constructor initializes the hook with required dependencies
-    /// @param _poolManager The Uniswap V4 Pool Manager interface
-    /// @param _restrictedToken The RestrictedToken contract
-    /// @param _nftStrategyFactory The NFTStrategyFactory token contract
-    /// @param _feeAddress Address to send a portion of the fees
     constructor(
         IPoolManager _poolManager,
         RestrictedToken _restrictedToken,
@@ -112,20 +72,24 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         feeAddress = _feeAddress;
     }
 
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
     /*                     FUNCTIONS                       */
-    /* ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™ */
 
-    /// @notice Updates the fee address for receiving protocol fees
-    /// @param _feeAddress New address to receive fees
+
+    function setNFTStrategyFactory(address _nftStrategyFactory) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        nftStrategyFactory = INFTStrategyFactory(_nftStrategyFactory);
+    }
+
+    function setpoolmanager(address _poolManager) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        manager = IPoolManager(_poolManager);
+    }
+
     function updateFeeAddress(address _feeAddress) external {
         if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
         feeAddress = _feeAddress;
     }
 
-    /// @notice Updates the fee address for a specific NFT strategy collection
-    /// @param nftStrategy The NFT strategy contract address
-    /// @param destination New address to receive fees for this collection
     function updateFeeAddressForCollection(address nftStrategy, address destination) external {
         address collection = nftStrategyFactory.nftStrategyToCollection(nftStrategy);
         if (collection == address(0)) revert InvalidCollection();
@@ -133,36 +97,27 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         feeAddressClaimedByOwner[nftStrategy] = destination;
     }
 
-    /// @notice Updates the fee address for a collection by admin of NFTStrategyFactory or the factory itself
-    /// @param nftStrategy The NFT strategy contract address
-    /// @param destination New address to receive fees for this collection
     function adminUpdateFeeAddress(address nftStrategy, address destination) external {
         if (msg.sender != nftStrategyFactory.owner() && msg.sender != address(nftStrategyFactory)) revert NotNFTStrategyFactoryOwner();        
         feeAddressClaimedByOwner[nftStrategy] = destination;
     }
  
-    /// @notice Process fees directly - distributes immediately
-    /// @param feeAmount Amount of ETH fees to distribute
     function _processFees(address collection, uint256 feeAmount) internal {
         if (feeAmount == 0) return;
         
-        // Calculate 80% for the specific NFTStrategy, 10% for PunkStrategy, and 10% for feeAddress
-        uint256 depositAmount = (feeAmount * 80) / 100;
-        uint256 pnkstrAmount = (feeAmount * 10) / 100;
-        uint256 ownerAmount = feeAmount - depositAmount - pnkstrAmount;
+        uint256 depositAmount = (feeAmount * 990) / 1000;
+        uint256 restrictedTokenAmount = 0;
+        uint256 ownerAmount = feeAmount - depositAmount - restrictedTokenAmount;
 
-        // Deposit fees into NFTStrategy collection
         INFTStrategy(collection).addFees{value: depositAmount}();
         
-        // Send fees to nftStrategyFactory to buy and burn RestrictedToken
-        SafeTransferLib.forceSafeTransferETH(address(nftStrategyFactory), pnkstrAmount);
+        if (restrictedTokenAmount > 0) {
+            SafeTransferLib.forceSafeTransferETH(address(nftStrategyFactory), restrictedTokenAmount);
+        }
         
-        // Send remainder to feeAddressClaimedByOwner if claimed, otherwise feeAddress
         SafeTransferLib.forceSafeTransferETH(feeAddressClaimedByOwner[collection] == address(0) ? feeAddress : feeAddressClaimedByOwner[collection], ownerAmount);
     }
 
-    /// @notice Calculates current fee based on deployment block and direction
-    /// @return Current fee in basis points
     function calculateFee(address collection, bool isBuying) public view returns (uint128) {
         if (!isBuying) return DEFAULT_FEE;
         if(nftStrategyFactory.deployerBuying()) return 0;
@@ -171,16 +126,14 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         if (deployedAt == 0) return DEFAULT_FEE;
 
         uint256 blocksPassed = block.number - deployedAt;
-        uint256 feeReductions = (blocksPassed / 5) * 100; // bips to subtract
+        uint256 feeReductions = (blocksPassed / 5) * 100;
 
-        uint256 maxReducible = STARTING_BUY_FEE - DEFAULT_FEE; // assumes invariant holds
+        uint256 maxReducible = STARTING_BUY_FEE - DEFAULT_FEE;
         if (feeReductions >= maxReducible) return DEFAULT_FEE;
 
         return uint128(STARTING_BUY_FEE - feeReductions);
     }
 
-    /// @notice Returns the hook's permissions for the Uniswap V4 pool
-    /// @return Hooks.Permissions struct indicating which hooks are enabled
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
@@ -200,64 +153,45 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         });
     }
 
-    /// @notice Validates initialization of a new pool
-    /// @return Selector indicating successful hook execution
     function _beforeInitialize(address, PoolKey calldata key, uint160)
         internal
         override
         returns (bytes4)
     {        
-        // Ensure the call is coming from NFTStrategyFactory
         if(!nftStrategyFactory.loadingLiquidity()) {
             revert NotNFTStrategy();
         }
 
-        // Get token1 from the pool key and store its deployment block
         address collection = Currency.unwrap(key.currency1);
         deploymentBlock[collection] = block.number;
         
         return BaseHook.beforeInitialize.selector;
     }
 
-    /// @notice Validates liquidity addition to a pool
     function _beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
         internal
         view
         override
         returns (bytes4)
     {        
-        // Ensure the call is coming from NFTStrategyFactory
         if(!nftStrategyFactory.loadingLiquidity()) {
             revert NotNFTStrategy();
         }
         return BaseHook.beforeAddLiquidity.selector;
     }
 
-    /// @notice Validates swap operations
-    /// @param sender The address initiating the call (router)
-    /// @param key The pool key containing token pair and fee information
-    /// @param params Swap parameters
-    /// @param data Additional data passed to the hook
-    /// @return Selector indicating successful hook execution, swap delta and dynamic fee
     function _beforeSwap(
-        address sender,
+        address,
         PoolKey calldata key,
-        SwapParams calldata params,
-        bytes calldata data
+        SwapParams calldata,
+        bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-        // Set midSwap flag on NFTStrategy contract
         if (nftStrategyFactory.routerRestrict()) {
             INFTStrategy(Currency.unwrap(key.currency1)).setMidSwap(true);
         }
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    /// @notice Processes swap events and takes the swap fee
-    /// @param sender The address initiating the call (router)
-    /// @param key The pool key containing token pair and fee information
-    /// @param params Swap parameters
-    /// @param delta Balance changes resulting from the swap
-    /// @return Selector indicating successful hook execution and fee amount
     function _afterSwap(
         address sender,
         PoolKey calldata key,
@@ -265,7 +199,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         BalanceDelta delta,
         bytes calldata
     ) internal override returns (bytes4, int128) {
-        // Calculate fee based on the swap amount
         bool specifiedTokenIs0 = (params.amountSpecified < 0 == params.zeroForOne);
         (Currency feeCurrency, int128 swapAmount) =
             (specifiedTokenIs0) ? (key.currency1, delta.amount1()) : (key.currency0, delta.amount0());
@@ -284,7 +217,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
         manager.take(feeCurrency, address(this), feeAmount);
 
-        // Emit the HookFee event, after taking the fee
         emit HookFee(
             PoolId.unwrap(key.toId()),
             sender,
@@ -292,29 +224,21 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             ethFee ? 0 : uint128(feeAmount)
         );
 
-        // Handle fee token deposit or conversion
         if (!ethFee) {
             uint256 feeInETH = _swapToEth(key, feeAmount);
             _processFees(collection, feeInETH); 
         } else {
-            // Fee amount is in ETH
             _processFees(collection, feeAmount); 
         }
 
-        // Get current price and emit 
         emit Trade(collection, _getCurrentPrice(key), delta.amount0(), delta.amount1());
 
-        // Set midSwap to false
         if (nftStrategyFactory.routerRestrict()) {
             INFTStrategy(Currency.unwrap(key.currency1)).setMidSwap(false);
         }
         return (BaseHook.afterSwap.selector, feeAmount.toInt128());
     }
 
-    /// @notice Swaps a token to ETH
-    /// @param key The pool key for the swap
-    /// @param amount The amount of tokens to swap
-    /// @return The amount of ETH received from the swap
     function _swapToEth(PoolKey memory key, uint256 amount) internal returns (uint256) {
         uint256 ethBefore = address(this).balance;
         
@@ -328,7 +252,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             bytes("")
         );
 
-        // Handle token settlements
         if (delta.amount0() < 0) {
             key.currency0.settle(poolManager, address(this), uint256(int256(-delta.amount0())), false);
         } else if (delta.amount0() > 0) {
@@ -344,14 +267,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         return address(this).balance - ethBefore;
     }
 
-    /// @notice Gets the current price of a token pair from the pool
-    /// @param key The pool key containing the token pair and pool parameters
-    /// @return The current sqrtpriceX96 from slot0
     function _getCurrentPrice(PoolKey calldata key) internal view returns (uint160) {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
         return sqrtPriceX96;
     }
 
-    /// @notice Allows the contract to receive ETH
     receive() external payable {}
 }

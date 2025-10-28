@@ -1,0 +1,16 @@
+{
+  "network": "polygon-mainnet",
+  "timestamp": "2025-10-25T20:56:59.208Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "factory": "0x506B350a0C73501476aE4742733dCCDC415f1643",
+  "implementation": "0xABb406a2E891d855988B1788Fa253D095284e9b3",
+  "hook": "0x423660071Fe05a8b7BD77F29b9CD5bB4A6C8A8c4",
+  "router": "0x1095692a6237d83c6a72f3f5efedb9a670c49223",
+  "poolManager": "0x67366782805870060151383f4bbff9dab53e5cd6",
+  "positionManager": "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "feeAddress": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "implementationTxHash": "0xffe7cbcf512c91b849808f34f886e90f827470196cf3efea947b7ed377f17c59",
+  "implementationGasUsed": "29196",
+  "hookTxHash": "0xdf7ea9e04aec7ad18d34b977339dc59e10e3d0e667aec694af290a8dc8d80a34"
+}

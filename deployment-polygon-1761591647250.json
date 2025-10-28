@@ -1,0 +1,24 @@
+{
+  "network": "polygon",
+  "timestamp": "2025-10-27T19:00:47.250Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "contracts": {
+    "NFTStrategyHookMiner": "0x60B4868D74bCCB3EfFf72b0CF043F3Af2314BfF2",
+    "NFTStrategyHook": "0x4c1f51aEB2A8f647C2b118e25e9D93C02c2Fe8C4",
+    "NFTStrategyFactory": "0xFE9E0edfF0088E5ea9b7DF39409bFEb7890470DB",
+    "RestrictedToken": "0x93a996843A7cED30893F37De6ca1f913052701D0",
+    "FakeNFTCollection": "0x6Fd22746b98E4DD3B9a990F54bF2448f5AD718bB",
+    "minedHookAddress": "0x4c1f51aEB2A8f647C2b118e25e9D93C02c2Fe8C4",
+    "minedSalt": "0x00000000000000000000000000000000000000000000000000000000000031b5"
+  },
+  "config": {
+    "poolManager": "0x67366782805870060151383f4bbff9dab53e5cd6",
+    "positionManager": "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
+    "universalRouter": "0x1095692a6237d83c6a72f3f5efedb9a670c49223",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "router": "0x1095692a6237d83c6a72f3f5efedb9a670c49223",
+    "feeAddress": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+    "restrictedTokenAddress": "0x93a996843A7cED30893F37De6ca1f913052701D0",
+    "restrictedTokenHookAddress": "0x4c1f51aEB2A8f647C2b118e25e9D93C02c2Fe8C4"
+  }
+}

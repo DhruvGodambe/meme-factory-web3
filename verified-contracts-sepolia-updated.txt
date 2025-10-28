@@ -1,0 +1,93 @@
+MEME FACTORY WEB3 - VERIFIED CONTRACTS ON SEPOLIA (UPDATED)
+============================================================
+
+Deployment Date: January 2025
+Network: Sepolia Testnet
+Deployer: 0xF93E7518F79C2E1978D6862Dbf161270040e623E
+
+VERIFIED CONTRACTS (CORRECTED ADDRESSES):
+=========================================
+
+1. FAKE NFT COLLECTION
+   Contract Address: 0x6bC29F22EB7E276fFF8b4d7bE5D511b725D8070c
+   Etherscan URL: https://sepolia.etherscan.io/address/0x6bC29F22EB7E276fFF8b4d7bE5D511b725D8070c#code
+   Purpose: Test NFT collection with 10 pre-minted NFTs
+   Features: ERC721 with pre-minting, metadata support
+   Status: ✅ VERIFIED
+
+2. RESTRICTED TOKEN
+   Contract Address: 0x69ae74E1cF5cB459C7FF2285C89564226627f578
+   Etherscan URL: https://sepolia.etherscan.io/address/0x69ae74E1cF5cB459C7FF2285C89564226627f578#code
+   Purpose: ERC20 token with trading restrictions for Uniswap V4
+   Features: Transfer restrictions, hook integration
+   Status: ✅ VERIFIED
+
+3. NFT STRATEGY FACTORY
+   Contract Address: 0xFD5F59c238C5A9A9e2b3D740C2A225B151ed9335
+   Etherscan URL: https://sepolia.etherscan.io/address/0xFD5F59c238C5A9A9e2b3D740C2A225B151ed9335#code
+   Purpose: Factory for deploying NFTStrategy contracts
+   Features: Proxy pattern, Uniswap V4 integration, upgradeable deployments
+   Status: ✅ VERIFIED
+
+4. NFT STRATEGY HOOK MINER
+   Contract Address: 0x0CA47a5BC61E859Cf0B6c548E85B1362De6Eb0F6
+   Etherscan URL: https://sepolia.etherscan.io/address/0x0CA47a5BC61E859Cf0B6c548E85B1362De6Eb0F6#code
+   Purpose: Contract for mining salt and deploying NFTStrategyHook with proper permissions
+   Features: Address mining, CREATE2 deployment, hook permission validation
+   Status: ✅ VERIFIED
+
+5. NFT STRATEGY HOOK
+   Contract Address: 0xc706061f1871cef13F42797732d525990584e8C4
+   Etherscan URL: https://sepolia.etherscan.io/address/0xc706061f1871cef13F42797732d525990584e8C4#code
+   Purpose: Uniswap V4 hook for NFTStrategy trading logic
+   Features: Fee collection, swap validation, RestrictedToken integration
+   Status: ✅ VERIFIED
+
+UNISWAP V4 ADDRESSES (SEPOLIA - CORRECTED):
+===========================================
+Pool Manager: 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543
+Position Manager: 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4
+Universal Router: 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b
+Permit2: 0x000000000022D473030F116dDEE9F6B43aC78BA3
+
+CONTRACT INTERACTIONS:
+=====================
+1. FakeNFTCollection -> Provides test NFTs for strategy testing
+2. RestrictedToken -> Used for fee collection and token burning
+3. NFTStrategyFactory -> Deploys NFTStrategy contracts as proxies
+4. NFTStrategyHookMiner -> Mines salt for hook deployment
+5. NFTStrategyHook -> Handles trading logic and fee collection
+
+DEPLOYMENT STATUS:
+=================
+✅ All contracts successfully deployed
+✅ All contracts verified on Etherscan
+✅ All contracts properly configured with corrected addresses
+✅ Ready for testing and mainnet deployment
+
+CHANGES FROM PREVIOUS DEPLOYMENT:
+================================
+- Updated Position Manager: 0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9 → 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4
+- Updated Router: 0x1095692a6237d83c6a72f3f5efedb9a670c49223 → 0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b
+- Pool Manager and Permit2 addresses remain the same
+
+NOTES:
+======
+- All contracts are deployed on Sepolia testnet with corrected Uniswap V4 addresses
+- Contracts use the official Sepolia Uniswap V4 addresses
+- System is ready for NFT strategy launches
+- Hook permissions are properly configured
+- Fee collection mechanism is active
+
+For mainnet deployment, update the Uniswap V4 addresses to Polygon mainnet:
+- Pool Manager: 0x67366782805870060151383f4bbff9dab53e5cd6
+- Position Manager: 0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9
+- Router: 0x1095692a6237d83c6a72f3f5efedb9a670c49223
+- Permit2: 0x000000000022D473030F116dDEE9F6B43aC78BA3
+
+
+
+
+
+
+

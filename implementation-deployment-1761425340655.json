@@ -1,0 +1,10 @@
+{
+  "network": "polygon-mainnet",
+  "timestamp": "2025-10-25T20:49:00.296Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "factory": "0x16237118dBBb2cB4A3C9f4a970C571467bc1def1",
+  "oldImplementation": "0x2D4e3BAA8a640ACf57f6c75252DE08580eCE82Fb",
+  "newImplementation": "0x2D4e3BAA8a640ACf57f6c75252DE08580eCE82Fb",
+  "transactionHash": "0x394ecc1000d837ec1002cc6e6244fc1c15662617646e01414da43aa3f32bb116",
+  "gasUsed": "29196"
+}
