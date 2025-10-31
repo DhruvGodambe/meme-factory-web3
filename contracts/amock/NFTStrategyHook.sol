@@ -19,6 +19,7 @@ import {ReentrancyGuard} from "solady/src/utils/ReentrancyGuard.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import "./Interfaces.sol";
+import "./FeeContract.sol";
 
 /// @title NFTStrategyHook - Uniswap V4 Hook for NFTStrategy
 contract NFTStrategyHook is BaseHook, ReentrancyGuard {
@@ -31,8 +32,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /*                      CONSTANTS                      */
 
     uint128 private constant TOTAL_BIPS = 10000;
-    uint128 private constant DEFAULT_FEE = 1500;
-    uint128 private constant STARTING_BUY_FEE = 9500;
+    uint128 private constant FLAT_FEE = 1500; // 15% flat fee
+    uint128 private constant VAULT_FEE_PORTION = 1400; // 14% to vault
+    uint128 private constant FOUNDER_FEE_PORTION = 100; // 1% to founder
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
@@ -40,6 +42,14 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     INFTStrategyFactory public nftStrategyFactory;
     IPoolManager public manager;
     address public feeAddress;
+    
+    // New state for Rarity Town Protocol
+    mapping(address => address) public activeFeeContract; // rarityToken => FeeContract
+    address public founderWallet;
+    address public brandAssetToken;
+    address public brandAssetHook;
+    bool public brandAssetEnabled;
+    address payable public routerAddress;
 
     /*                   STATE VARIABLES                   */
 
@@ -70,6 +80,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         restrictedToken = _restrictedToken;
         nftStrategyFactory = _nftStrategyFactory;
         feeAddress = _feeAddress;
+        founderWallet = _feeAddress; // Initialize founder wallet to fee address
     }
 
     /*                     FUNCTIONS                       */
@@ -101,15 +112,236 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         if (msg.sender != nftStrategyFactory.owner() && msg.sender != address(nftStrategyFactory)) revert NotNFTStrategyFactoryOwner();        
         feeAddressClaimedByOwner[nftStrategy] = destination;
     }
+
+    /*               RARITY TOWN PROTOCOL FUNCTIONS        */
+
+    function setActiveFeeContract(address rarityToken, address feeContract) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        activeFeeContract[rarityToken] = feeContract;
+    }
+
+    function setFounderWallet(address _founderWallet) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        founderWallet = _founderWallet;
+    }
+
+    function setBrandAsset(address _brandAssetToken, address _brandAssetHook, bool _enabled) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        brandAssetToken = _brandAssetToken;
+        brandAssetHook = _brandAssetHook;
+        brandAssetEnabled = _enabled;
+    }
+
+    // COMMENTED OUT FOR MANUAL MODE
+    // function ensureActiveFeeContract(address rarityToken) internal {
+    //     if (activeFeeContract[rarityToken] == address(0)) {
+    //         // Create new FeeContract
+    //         address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
+    //         
+    //         FeeContract newFeeContract = new FeeContract(
+    //             address(nftStrategyFactory),
+    //             address(this),
+    //             IUniswapV4Router04(routerAddress),
+    //             collection,
+    //             rarityToken
+    //         );
+    //         
+    //         activeFeeContract[rarityToken] = address(newFeeContract);
+    //     }
+    // }
+
+    // COMMENTED OUT FOR MANUAL MODE - Use forceRotateFeeContract() instead
+    // function rotateIfFull(address rarityToken) public {
+    //     address currentFeeContract = activeFeeContract[rarityToken];
+    //     
+    //     if (currentFeeContract != address(0)) {
+    //         (bool success, bytes memory data) = currentFeeContract.call(abi.encodeWithSignature("isFull()"));
+    //         if (success && abi.decode(data, (bool))) {
+    //             // Create new FeeContract
+    //             address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
+    //             
+    //             FeeContract newFeeContract = new FeeContract(
+    //                 address(nftStrategyFactory),
+    //                 address(this),
+    //                 IUniswapV4Router04(routerAddress),
+    //                 collection,
+    //                 rarityToken
+    //             );
+    //             
+    //             activeFeeContract[rarityToken] = address(newFeeContract);
+    //         }
+    //     }
+    // }
+
+    /// @notice Check if current FeeContract is full (manual check)
+    function isActiveFeeContractFull(address rarityToken) external view returns (bool) {
+        address currentFeeContract = activeFeeContract[rarityToken];
+        if (currentFeeContract == address(0)) return false;
+        
+        (bool success, bytes memory data) = currentFeeContract.staticcall(abi.encodeWithSignature("isFull()"));
+        if (success) {
+            return abi.decode(data, (bool));
+        }
+        return false;
+    }
+
+    /// @notice Check if a FeeContract exists for a RARITY token
+    function hasFeeContract(address rarityToken) external view returns (bool) {
+        return activeFeeContract[rarityToken] != address(0);
+    }
+
+    /// @notice Get active FeeContract address (returns address(0) if none)
+    function getActiveFeeContract(address rarityToken) external view returns (address) {
+        return activeFeeContract[rarityToken];
+    }
+
+    /// @notice Check if any FeeContract address is full
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return isFull True if the FeeContract is full (5+ NFTs), false otherwise
+    function isFeeContractFull(address feeContractAddress) external view returns (bool) {
+        if (feeContractAddress == address(0)) return false;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("isFull()"));
+        if (success) {
+            return abi.decode(data, (bool));
+        }
+        return false;
+    }
+
+    /// @notice Get current holdings of any FeeContract address
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return holdings Number of NFTs currently held by the FeeContract
+    function getFeeContractHoldings(address feeContractAddress) external view returns (uint256) {
+        if (feeContractAddress == address(0)) return 0;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentHoldings()"));
+        if (success) {
+            return abi.decode(data, (uint256));
+        }
+        return 0;
+    }
+
+    /// @notice Get current fees of any FeeContract address
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return fees Amount of ETH fees currently held by the FeeContract
+    function getFeeContractFees(address feeContractAddress) external view returns (uint256) {
+        if (feeContractAddress == address(0)) return 0;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentFees()"));
+        if (success) {
+            return abi.decode(data, (uint256));
+        }
+        return 0;
+    }
+
+    function setRouterAddress(address payable _routerAddress) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        routerAddress = _routerAddress;
+    }
+
+    /// @notice Manually deploy a new FeeContract for a RARITY token
+    /// @param rarityToken The RARITY token address to create a FeeContract for
+    /// @return feeContract Address of the newly created FeeContract
+    function deployNewFeeContract(address rarityToken) external returns (address) {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        
+        address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
+        require(collection != address(0), "Invalid RARITY token");
+        
+        FeeContract newFeeContract = new FeeContract(
+            address(nftStrategyFactory),
+            address(this),
+            IUniswapV4Router04(routerAddress),
+            collection,
+            rarityToken
+        );
+        
+        // Set as active FeeContract
+        activeFeeContract[rarityToken] = address(newFeeContract);
+        
+        return address(newFeeContract);
+    }
+
+    /// @notice Force create a new FeeContract even if current one isn't full
+    /// @param rarityToken The RARITY token address
+    /// @return feeContract Address of the newly created FeeContract
+    function forceRotateFeeContract(address rarityToken) external returns (address) {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        
+        address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
+        require(collection != address(0), "Invalid RARITY token");
+        
+        FeeContract newFeeContract = new FeeContract(
+            address(nftStrategyFactory),
+            address(this),
+            IUniswapV4Router04(routerAddress),
+            collection,
+            rarityToken
+        );
+        
+        // Set as active FeeContract (replaces current one)
+        activeFeeContract[rarityToken] = address(newFeeContract);
+        
+        return address(newFeeContract);
+    }
  
-    function _processFees(address collection, uint256 feeAmount) internal {
+    function _processFees(address rarityToken, uint256 feeAmount) internal {
+        if (feeAmount == 0) return;
+        
+        // MANUAL MODE: No automatic FeeContract creation
+        // Admin must manually deploy FeeContracts using deployNewFeeContract()
+        // ensureActiveFeeContract(rarityToken);  // ← COMMENTED OUT
+        
+        // MANUAL MODE: No automatic rotation
+        // Admin must manually rotate using forceRotateFeeContract()
+        // rotateIfFull(rarityToken);  // ← COMMENTED OUT
+        
+        // Calculate fee distribution: 14% to vault, 1% to founder
+        uint256 vaultAmount = (feeAmount * VAULT_FEE_PORTION) / TOTAL_BIPS;
+        uint256 founderAmount = (feeAmount * FOUNDER_FEE_PORTION) / TOTAL_BIPS;
+        
+        // Send 14% to active FeeContract (if one exists)
+        address activeVault = activeFeeContract[rarityToken];
+        if (activeVault != address(0)) {
+            (bool success,) = activeVault.call{value: vaultAmount}(abi.encodeWithSignature("addFees()"));
+            require(success, "Vault fee transfer failed");
+        } else {
+            // If no FeeContract exists, send vault portion to founder as well
+            founderAmount += vaultAmount;
+        }
+        
+        // Handle founder fee (includes vault portion if no FeeContract)
+        if (founderAmount > 0) {
+            if (brandAssetEnabled && brandAssetToken != address(0)) {
+                // Buy and burn brand asset
+                _buyAndBurnBrandAsset(founderAmount);
+            } else {
+                // Send to founder wallet
+                address destination = founderWallet != address(0) ? founderWallet : feeAddress;
+                SafeTransferLib.forceSafeTransferETH(destination, founderAmount);
+            }
+        }
+    }
+
+    function _buyAndBurnBrandAsset(uint256 amountIn) internal {
+        if (brandAssetToken == address(0) || brandAssetHook == address(0)) return;
+        
+        // Use router to buy and send to dead address
+        // Note: This would need the router interface - keeping simple for now
+        // Future implementation would create PoolKey and use router for actual swap
+        SafeTransferLib.forceSafeTransferETH(address(0x000000000000000000000000000000000000dEaD), amountIn);
+    }
+
+    // Legacy function kept for compatibility
+    function _processFeesLegacy(address collection, uint256 feeAmount) internal {
         if (feeAmount == 0) return;
         
         uint256 depositAmount = (feeAmount * 990) / 1000;
         uint256 restrictedTokenAmount = 0;
         uint256 ownerAmount = feeAmount - depositAmount - restrictedTokenAmount;
 
-        INFTStrategy(collection).addFees{value: depositAmount}();
+        // Legacy: send to NFTStrategy (now disabled)
+        // INFTStrategy(collection).addFees{value: depositAmount}();
         
         if (restrictedTokenAmount > 0) {
             SafeTransferLib.forceSafeTransferETH(address(nftStrategyFactory), restrictedTokenAmount);
@@ -118,20 +350,27 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         SafeTransferLib.forceSafeTransferETH(feeAddressClaimedByOwner[collection] == address(0) ? feeAddress : feeAddressClaimedByOwner[collection], ownerAmount);
     }
 
-    function calculateFee(address collection, bool isBuying) public view returns (uint128) {
-        if (!isBuying) return DEFAULT_FEE;
+    function calculateFee(address /*collection*/, bool /*isBuying*/) public view returns (uint128) {
+        // Always return flat 15% fee for Rarity Town Protocol
+        if(nftStrategyFactory.deployerBuying()) return 0;
+        return FLAT_FEE;
+    }
+
+    // Legacy function kept for compatibility - now returns flat fee
+    function calculateFeeLegacy(address collection, bool isBuying) public view returns (uint128) {
+        if (!isBuying) return FLAT_FEE;
         if(nftStrategyFactory.deployerBuying()) return 0;
 
         uint256 deployedAt = deploymentBlock[collection];
-        if (deployedAt == 0) return DEFAULT_FEE;
+        if (deployedAt == 0) return FLAT_FEE;
 
         uint256 blocksPassed = block.number - deployedAt;
         uint256 feeReductions = (blocksPassed / 5) * 100;
 
-        uint256 maxReducible = STARTING_BUY_FEE - DEFAULT_FEE;
-        if (feeReductions >= maxReducible) return DEFAULT_FEE;
+        uint256 maxReducible = 9500 - FLAT_FEE; // Using old STARTING_BUY_FEE logic
+        if (feeReductions >= maxReducible) return FLAT_FEE;
 
-        return uint128(STARTING_BUY_FEE - feeReductions);
+        return uint128(9500 - feeReductions);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -224,11 +463,13 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             ethFee ? 0 : uint128(feeAmount)
         );
 
+        address rarityToken = Currency.unwrap(key.currency1);
+        
         if (!ethFee) {
             uint256 feeInETH = _swapToEth(key, feeAmount);
-            _processFees(collection, feeInETH); 
+            _processFees(rarityToken, feeInETH); 
         } else {
-            _processFees(collection, feeAmount); 
+            _processFees(rarityToken, feeAmount); 
         }
 
         emit Trade(collection, _getCurrentPrice(key), delta.amount0(), delta.amount1());

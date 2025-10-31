@@ -111,7 +111,7 @@ async function main() {
       factoryAddress,
       FEE_ADDRESS,
       {
-        gasLimit: 16_000_000, // 30M gas limit
+        gasLimit: 16_777_215, // 30M gas limit
         gasPrice: feeData.gasPrice || BigInt(0)
       }
     );

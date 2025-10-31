@@ -19,6 +19,10 @@ contract FakeNFTCollection is ERC721, Ownable {
     string private _symbol;
     uint256 public constant MAX_SUPPLY = 1000;
     uint256 public constant PRE_MINT_COUNT = 10; // Pre-mint 10 NFTs for testing
+    
+    // Simple escrow marketplace
+    struct Listing { address seller; uint256 price; }
+    mapping(uint256 => Listing) public listings;
 
     event NFTMinted(address indexed to, uint256 indexed tokenId);
 
@@ -76,6 +80,44 @@ contract FakeNFTCollection is ERC721, Ownable {
             emit NFTMinted(to, _nextTokenId);
             _nextTokenId++;
         }
+    }
+
+    /**
+     * @notice List a token for sale by transferring it into escrow
+     * @param tokenId The token id to list
+     * @param price The sale price in wei
+     */
+    function list(uint256 tokenId, uint256 price) external {
+        if (ownerOf(tokenId) != msg.sender) revert NotOwnerOrApproved();
+        // Transfer into escrow (this contract)
+        _transfer(msg.sender, address(this), tokenId);
+        listings[tokenId] = Listing({seller: msg.sender, price: price});
+    }
+
+    /**
+     * @notice Cancel a listing and return the token to the seller
+     * @param tokenId The token id
+     */
+    function cancel(uint256 tokenId) external {
+        Listing memory l = listings[tokenId];
+        if (l.seller == address(0)) revert InvalidTokenId();
+        if (l.seller != msg.sender) revert NotOwnerOrApproved();
+        delete listings[tokenId];
+        _transfer(address(this), l.seller, tokenId);
+    }
+
+    /**
+     * @notice Buy a listed token from escrow
+     * @param tokenId The token id
+     */
+    function buy(uint256 tokenId) external payable {
+        Listing memory l = listings[tokenId];
+        if (l.seller == address(0)) revert InvalidTokenId();
+        if (msg.value != l.price) revert MaxSupplyReached(); // reuse error to avoid new one
+        delete listings[tokenId];
+        _transfer(address(this), msg.sender, tokenId);
+        (bool ok, ) = l.seller.call{value: msg.value}("");
+        require(ok, "Payout failed");
     }
 
     /**

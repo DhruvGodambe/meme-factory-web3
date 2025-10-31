@@ -36,6 +36,26 @@ struct ExactInputSingleParams {
     bytes hookData;
 }
 
+interface IFeeContract {
+    // View functions
+    function isFull() external view returns (bool);
+    function currentHoldings() external view returns (uint256);
+    function currentFees() external view returns (uint256);
+    function collection() external view returns (address);
+    function rarityToken() external view returns (address);
+    
+    // Core functions
+    function addFees() external payable;
+    function buyTargetNFT(uint256 value, bytes calldata data, uint256 expectedId, address target) external;
+    function sellTargetNFT(uint256 tokenId) external payable;
+    function processTokenTwap() external;
+    function buybackAndBurn(uint256 amountIn) external;
+    
+    // Admin functions
+    function setPriceMultiplier(uint256 _newMultiplier) external;
+    function emergencyWithdraw() external;
+}
+
 interface IPunkStrategy {
     // View functions
     function loadingLiquidity() external view returns (bool);

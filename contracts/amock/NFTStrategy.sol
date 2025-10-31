@@ -10,7 +10,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import "./Interfaces.sol";
 
-/// @title NFTStrategy - An ERC20 token that constantly churns NFTs from a collection
+/// @title NFTStrategy - RARITY ERC20 token (non-transferable between EOAs, DEX tradable)
+/// @notice This contract now serves as the RARITY token. NFT trading moved to FeeContract.
 contract NFTStrategy is ERC20, ReentrancyGuard {
     /*                      CONSTANTS                      */
     
@@ -102,9 +103,11 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
 
     /*                 MECHANISM FUNCTIONS                 */
 
-    function addFees() external payable nonReentrant {
-        if (msg.sender != hookAddress) revert OnlyHook();
-        currentFees += msg.value;
+    /// @notice Legacy function - kept for compatibility but disabled
+    /// @dev Fee collection now handled by FeeContract
+    function addFees() external pure {
+        // Disabled for Rarity Town Protocol - fees go to FeeContract
+        revert("Function disabled - fees handled by FeeContract");
     }
 
     function setMidSwap(bool value) external {
@@ -112,7 +115,14 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         midSwap = value;
     }
 
-    function buyTargetNFT(uint256 value, bytes calldata data, uint256 expectedId, address target) external nonReentrant {
+    /// @notice Legacy function - kept for compatibility but disabled
+    /// @dev NFT trading now handled by FeeContract
+    function buyTargetNFT(uint256 /*value*/, bytes calldata /*data*/, uint256 /*expectedId*/, address /*target*/) external pure {
+        // Disabled for Rarity Town Protocol - NFT trading moved to FeeContract
+        revert("Function disabled - NFT trading handled by FeeContract");
+        
+        /*
+        // Legacy implementation kept for reference:
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
@@ -146,9 +156,17 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         nftForSale[expectedId] = salePrice;
         
         emit NFTBoughtByProtocol(expectedId, cost, salePrice);
+        */
     }
 
-    function sellTargetNFT(uint256 tokenId) external payable nonReentrant {
+    /// @notice Legacy function - kept for compatibility but disabled
+    /// @dev NFT trading now handled by FeeContract
+    function sellTargetNFT(uint256 /*tokenId*/) external pure {
+        // Disabled for Rarity Town Protocol - NFT trading moved to FeeContract
+        revert("Function disabled - NFT trading handled by FeeContract");
+        
+        /*
+        // Legacy implementation kept for reference:
         uint256 salePrice = nftForSale[tokenId];
         
         if (salePrice == 0) revert NFTNotForSale();
@@ -164,9 +182,17 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         ethToTwap += salePrice;
         
         emit NFTSoldByProtocol(tokenId, salePrice, msg.sender);
+        */
     }
 
-    function processTokenTwap() external {
+    /// @notice Legacy function - kept for compatibility but disabled
+    /// @dev Buyback/burn now handled by FeeContract
+    function processTokenTwap() external pure {
+        // Disabled for Rarity Town Protocol - buyback/burn moved to FeeContract
+        revert("Function disabled - buyback/burn handled by FeeContract");
+        
+        /*
+        // Legacy implementation kept for reference:
         if(ethToTwap == 0) revert NoETHToTwap();
         
         if(block.number < lastTwapBlock + twapDelayInBlocks) revert TwapDelayNotMet();
@@ -185,6 +211,7 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         _buyAndBurnTokens(burnAmount);
 
         SafeTransferLib.forceSafeTransferETH(msg.sender, reward);
+        */
     }
 
     /*                  INTERNAL FUNCTIONS                 */
@@ -209,11 +236,14 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         );
     }
 
+    /// @notice Enforce RARITY token transfer restrictions (non-transferable between EOAs)
+    /// @dev Keeps router restrictions intact - DEX trading allowed, direct EOA transfers blocked
     function _afterTokenTransfer(address from, address to, uint256) internal view override {
         if (!INFTStrategyFactory(factory).routerRestrict() || midSwap) return;
 
+        // Use factory's validTransfer logic to enforce restrictions
         if (!INFTStrategyFactory(factory).validTransfer(from, to, address(this))) {
-            revert("Invalid transfer");
+            revert("Invalid transfer - RARITY is non-transferable between EOAs");
         }
     }
 
