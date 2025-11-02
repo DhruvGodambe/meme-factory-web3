@@ -43,11 +43,13 @@ interface IFeeContract {
     function currentFees() external view returns (uint256);
     function collection() external view returns (address);
     function rarityToken() external view returns (address);
+    function nftForSale(uint256 tokenId) external view returns (uint256);
     
     // Core functions
     function addFees() external payable;
     function buyTargetNFT(uint256 value, bytes calldata data, uint256 expectedId, address target) external;
     function sellTargetNFT(uint256 tokenId) external payable;
+    function smartBuyNFT(uint256 tokenId, address previousFeeContract) external;
     function processTokenTwap() external;
     function buybackAndBurn(uint256 amountIn) external;
     
@@ -150,6 +152,14 @@ interface IERC721 {
     function isApprovedForAll(address owner, address operator) external view returns (bool);
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
     function owner() external view returns (address);
+}
+
+interface ICollectionWithListings {
+    function listings(uint256 tokenId) external view returns (address seller, uint256 price);
+    function list(uint256 tokenId, uint256 price) external;
+    function buy(uint256 tokenId) external payable;
+    function cancel(uint256 tokenId) external;
+    function mint(address to) external returns (uint256);
 }
 
 interface INFTStrategy {

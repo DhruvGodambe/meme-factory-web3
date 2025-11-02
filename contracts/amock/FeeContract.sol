@@ -94,6 +94,96 @@ contract FeeContract is ReentrancyGuard {
 
     /*                 NFT TRADING FUNCTIONS               */
 
+    /// @notice Smart buy function that chooses between collection marketplace and previous FeeContract
+    function smartBuyNFT(
+        uint256 tokenId,
+        address previousFeeContract
+    ) external nonReentrant {
+        if (currentHoldings >= MAX_NFTS) revert ContractFull();
+        if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
+
+        uint256 collectionPrice = 0;
+        uint256 feeContractPrice = 0;
+        bool availableOnCollection = false;
+        bool availableOnFeeContract = false;
+`
+        // Check collection marketplace price
+        try ICollectionWithListings(address(collection)).listings(tokenId) returns (address seller, uint256 price) {
+            if (seller != address(0) && price > 0) {
+                collectionPrice = price;
+                availableOnCollection = true;
+            }
+        } catch {}
+
+        // Check previous FeeContract price
+        if (previousFeeContract != address(0)) {
+            try IFeeContract(previousFeeContract).nftForSale(tokenId) returns (uint256 price) {
+                if (price > 0) {
+                    // Verify the previous FeeContract actually owns the NFT
+                    if (collection.ownerOf(tokenId) == previousFeeContract) {
+                        feeContractPrice = price;
+                        availableOnFeeContract = true;
+                    }
+                }
+            } catch {}
+        }
+
+        if (!availableOnCollection && !availableOnFeeContract) {
+            revert NFTNotForSale();
+        }
+
+        // Choose the cheaper option
+        bool buyFromCollection = false;
+        uint256 purchasePrice = 0;
+
+        if (availableOnCollection && availableOnFeeContract) {
+            if (collectionPrice <= feeContractPrice) {
+                buyFromCollection = true;
+                purchasePrice = collectionPrice;
+            } else {
+                buyFromCollection = false;
+                purchasePrice = feeContractPrice;
+            }
+        } else if (availableOnCollection) {
+            buyFromCollection = true;
+            purchasePrice = collectionPrice;
+        } else {
+            buyFromCollection = false;
+            purchasePrice = feeContractPrice;
+        }
+
+        if (purchasePrice > currentFees) revert NotEnoughEth();
+
+        uint256 ethBalanceBefore = address(this).balance;
+        uint256 nftBalanceBefore = collection.balanceOf(address(this));
+
+        // Execute the purchase
+        if (buyFromCollection) {
+            // Buy from collection marketplace
+            bytes memory buyData = abi.encodeWithSignature("buy(uint256)", tokenId);
+            (bool success, bytes memory reason) = address(collection).call{value: purchasePrice}(buyData);
+            if (!success) revert ExternalCallFailed(reason);
+        } else {
+            // Buy from previous FeeContract
+            IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(tokenId);
+        }
+
+        // Verify purchase success
+        uint256 nftBalanceAfter = collection.balanceOf(address(this));
+        if (nftBalanceAfter != nftBalanceBefore + 1) revert NeedToBuyNFT();
+        if (collection.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
+
+        // Update state
+        uint256 actualCost = ethBalanceBefore - address(this).balance;
+        currentFees -= actualCost;
+        currentHoldings++;
+
+        uint256 salePrice = actualCost * priceMultiplier / 1000;
+        nftForSale[tokenId] = salePrice;
+        
+        emit NFTBoughtByProtocol(tokenId, actualCost, salePrice);
+    }
+
     /// @notice Buy an NFT using collected fees
     function buyTargetNFT(
         uint256 value,

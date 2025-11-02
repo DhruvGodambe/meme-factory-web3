@@ -1194,3 +1194,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /// @notice Allows the contract to receive ETH
     receive() external payable {}
 }
+
+
+
+
+
+
+@NFTStrategyHook.sol in this contract update the getter functons to see the active contract using the fee contract address not with the raritytoken address and also use a hot wallet address which can be updated by the admin and hot wallet address is for calling all the get functions 

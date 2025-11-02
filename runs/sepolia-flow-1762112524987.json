@@ -1,0 +1,22 @@
+{
+  "network": "sepolia",
+  "addresses": {
+    "feeContract": "0xc3aD1980B4fa9536db535AA6D52fab577a57C2c9",
+    "collection": "0xb1551a7c12c87D4D1beB29dA74de67c7DA4fd9cb",
+    "seller": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+    "buyer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E"
+  },
+  "tokenId": "10",
+  "priceWei": "20000000000000",
+  "feeContractStatus": {
+    "currentFees": "23100715218205",
+    "currentHoldings": "0",
+    "isFull": false
+  },
+  "tx": {
+    "mint": "0x140ff1094dc39db37cfa39c5391980b921eb84c70602ba107624a587fcea972a",
+    "list": "0xa5d2eb0dfc613b7ae3fe238e4fa06bdab97868bf5d3b710fc4862bbf93a04e31",
+    "buyTargetNFT": "0x95ffe0b44fcdf0d5b9d4723c90da6a96ff4ae182f91b4f2c32b707413e953c62",
+    "sellTargetNFT": "0x085a0b0e5a03a62ee9394888b9e22ff433b7897fcfd959d3385952638ef784a6"
+  }
+}
