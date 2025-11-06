@@ -106,7 +106,7 @@ contract FeeContract is ReentrancyGuard {
         uint256 feeContractPrice = 0;
         bool availableOnCollection = false;
         bool availableOnFeeContract = false;
-`
+
         // Check collection marketplace price
         try ICollectionWithListings(address(collection)).listings(tokenId) returns (address seller, uint256 price) {
             if (seller != address(0) && price > 0) {

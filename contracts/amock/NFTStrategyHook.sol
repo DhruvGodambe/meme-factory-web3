@@ -45,11 +45,16 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     
     // New state for Rarity Town Protocol
     mapping(address => address) public activeFeeContract; // rarityToken => FeeContract
+    mapping(address => address) public feeContractToRarityToken; // FeeContract => rarityToken
     address public founderWallet;
     address public brandAssetToken;
     address public brandAssetHook;
     bool public brandAssetEnabled;
     address payable public routerAddress;
+    
+    // Hot wallet system
+    address public hotWallet;
+    mapping(address => bool) public authorizedCallers; // hotWallet and admin can call getters
 
     /*                   STATE VARIABLES                   */
 
@@ -62,6 +67,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     error NotNFTStrategyFactoryOwner();
     error InvalidCollection();
     error NotCollectionOwner();
+    error NotAuthorizedCaller();
+    error InvalidHotWallet();
 
     /*                    CUSTOM EVENTS                    */
 
@@ -81,6 +88,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         nftStrategyFactory = _nftStrategyFactory;
         feeAddress = _feeAddress;
         founderWallet = _feeAddress; // Initialize founder wallet to fee address
+        
+        // Initialize authorized callers
+        authorizedCallers[_feeAddress] = true; // Admin is authorized
     }
 
     /*                     FUNCTIONS                       */
@@ -118,6 +128,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     function setActiveFeeContract(address rarityToken, address feeContract) external {
         if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
         activeFeeContract[rarityToken] = feeContract;
+        feeContractToRarityToken[feeContract] = rarityToken;
     }
 
     function setFounderWallet(address _founderWallet) external {
@@ -130,6 +141,56 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         brandAssetToken = _brandAssetToken;
         brandAssetHook = _brandAssetHook;
         brandAssetEnabled = _enabled;
+    }
+
+    /*               HOT WALLET SYSTEM FUNCTIONS           */
+
+    /// @notice Set the hot wallet address (can be generated off-chain)
+    /// @param _hotWallet The new hot wallet address
+    function setHotWallet(address _hotWallet) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        if (_hotWallet == address(0)) revert InvalidHotWallet();
+        
+        // Remove old hot wallet authorization
+        if (hotWallet != address(0)) {
+            authorizedCallers[hotWallet] = false;
+        }
+        
+        // Set new hot wallet and authorize it
+        hotWallet = _hotWallet;
+        authorizedCallers[_hotWallet] = true;
+    }
+
+    /// @notice Add or remove authorized callers for getter functions
+    /// @param caller The address to authorize/deauthorize
+    /// @param authorized Whether to authorize or deauthorize
+    function setAuthorizedCaller(address caller, bool authorized) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        authorizedCallers[caller] = authorized;
+    }
+
+    /// @notice Fund the hot wallet with ETH from the hook contract
+    /// @param amount Amount of ETH to send to hot wallet (in wei)
+    function fundHotWallet(uint256 amount) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        if (hotWallet == address(0)) revert InvalidHotWallet();
+        if (address(this).balance < amount) revert("Insufficient balance");
+        
+        SafeTransferLib.forceSafeTransferETH(hotWallet, amount);
+    }
+
+    /// @notice Check if address is authorized to call getter functions
+    /// @param caller The address to check
+    /// @return True if authorized, false otherwise
+    function isAuthorizedCaller(address caller) external view returns (bool) {
+        return authorizedCallers[caller];
+    }
+
+    /*               MODIFIER FOR AUTHORIZED ACCESS        */
+
+    modifier onlyAuthorized() {
+        if (!authorizedCallers[msg.sender]) revert NotAuthorizedCaller();
+        _;
     }
 
     // COMMENTED OUT FOR MANUAL MODE
@@ -173,7 +234,97 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     //     }
     // }
 
-    /// @notice Check if current FeeContract is full (manual check)
+    /*               AUTHORIZED GETTER FUNCTIONS            */
+
+    /// @notice Check if specific FeeContract is full (authorized access only)
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return isFull True if the FeeContract is full (5+ NFTs), false otherwise
+    function isFeeContractFull(address feeContractAddress) external view onlyAuthorized returns (bool) {
+        if (feeContractAddress == address(0)) return false;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("isFull()"));
+        if (success) {
+            return abi.decode(data, (bool));
+        }
+        return false;
+    }
+
+    /// @notice Get current holdings of specific FeeContract (authorized access only)
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return holdings Number of NFTs currently held by the FeeContract
+    function getFeeContractHoldings(address feeContractAddress) external view onlyAuthorized returns (uint256) {
+        if (feeContractAddress == address(0)) return 0;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentHoldings()"));
+        if (success) {
+            return abi.decode(data, (uint256));
+        }
+        return 0;
+    }
+
+    /// @notice Get current fees of specific FeeContract (authorized access only)
+    /// @param feeContractAddress The specific FeeContract address to check
+    /// @return fees Amount of ETH fees currently held by the FeeContract
+    function getFeeContractFees(address feeContractAddress) external view onlyAuthorized returns (uint256) {
+        if (feeContractAddress == address(0)) return 0;
+        
+        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentFees()"));
+        if (success) {
+            return abi.decode(data, (uint256));
+        }
+        return 0;
+    }
+
+    /// @notice Get the RARITY token associated with a FeeContract (authorized access only)
+    /// @param feeContractAddress The FeeContract address
+    /// @return rarityToken The associated RARITY token address
+    function getRarityTokenFromFeeContract(address feeContractAddress) external view onlyAuthorized returns (address) {
+        return feeContractToRarityToken[feeContractAddress];
+    }
+
+    /// @notice Get the collection associated with a FeeContract (authorized access only)
+    /// @param feeContractAddress The FeeContract address
+    /// @return collection The associated NFT collection address
+    function getCollectionFromFeeContract(address feeContractAddress) external view onlyAuthorized returns (address) {
+        address rarityToken = feeContractToRarityToken[feeContractAddress];
+        if (rarityToken == address(0)) return address(0);
+        return nftStrategyFactory.nftStrategyToCollection(rarityToken);
+    }
+
+    /// @notice Get comprehensive FeeContract info (authorized access only)
+    /// @param feeContractAddress The FeeContract address
+    /// @return rarityToken The RARITY token address
+    /// @return collection The NFT collection address
+    /// @return currentHoldings Number of NFTs held
+    /// @return currentFees Amount of ETH fees held
+    /// @return isFull Whether the vault is full (5+ NFTs)
+    function getFeeContractInfo(address feeContractAddress) external view onlyAuthorized returns (
+        address rarityToken,
+        address collection,
+        uint256 currentHoldings,
+        uint256 currentFees,
+        bool isFull
+    ) {
+        if (feeContractAddress == address(0)) {
+            return (address(0), address(0), 0, 0, false);
+        }
+
+        rarityToken = feeContractToRarityToken[feeContractAddress];
+        collection = rarityToken != address(0) ? nftStrategyFactory.nftStrategyToCollection(rarityToken) : address(0);
+
+        (bool success1, bytes memory data1) = feeContractAddress.staticcall(abi.encodeWithSignature("currentHoldings()"));
+        currentHoldings = success1 ? abi.decode(data1, (uint256)) : 0;
+
+        (bool success2, bytes memory data2) = feeContractAddress.staticcall(abi.encodeWithSignature("currentFees()"));
+        currentFees = success2 ? abi.decode(data2, (uint256)) : 0;
+
+        (bool success3, bytes memory data3) = feeContractAddress.staticcall(abi.encodeWithSignature("isFull()"));
+        isFull = success3 ? abi.decode(data3, (bool)) : false;
+    }
+
+    /*               LEGACY RARITY TOKEN GETTERS           */
+
+    /// @notice Check if current FeeContract is full by RARITY token (manual check)
     function isActiveFeeContractFull(address rarityToken) external view returns (bool) {
         address currentFeeContract = activeFeeContract[rarityToken];
         if (currentFeeContract == address(0)) return false;
@@ -193,45 +344,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /// @notice Get active FeeContract address (returns address(0) if none)
     function getActiveFeeContract(address rarityToken) external view returns (address) {
         return activeFeeContract[rarityToken];
-    }
-
-    /// @notice Check if any FeeContract address is full
-    /// @param feeContractAddress The specific FeeContract address to check
-    /// @return isFull True if the FeeContract is full (5+ NFTs), false otherwise
-    function isFeeContractFull(address feeContractAddress) external view returns (bool) {
-        if (feeContractAddress == address(0)) return false;
-        
-        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("isFull()"));
-        if (success) {
-            return abi.decode(data, (bool));
-        }
-        return false;
-    }
-
-    /// @notice Get current holdings of any FeeContract address
-    /// @param feeContractAddress The specific FeeContract address to check
-    /// @return holdings Number of NFTs currently held by the FeeContract
-    function getFeeContractHoldings(address feeContractAddress) external view returns (uint256) {
-        if (feeContractAddress == address(0)) return 0;
-        
-        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentHoldings()"));
-        if (success) {
-            return abi.decode(data, (uint256));
-        }
-        return 0;
-    }
-
-    /// @notice Get current fees of any FeeContract address
-    /// @param feeContractAddress The specific FeeContract address to check
-    /// @return fees Amount of ETH fees currently held by the FeeContract
-    function getFeeContractFees(address feeContractAddress) external view returns (uint256) {
-        if (feeContractAddress == address(0)) return 0;
-        
-        (bool success, bytes memory data) = feeContractAddress.staticcall(abi.encodeWithSignature("currentFees()"));
-        if (success) {
-            return abi.decode(data, (uint256));
-        }
-        return 0;
     }
 
     function setRouterAddress(address payable _routerAddress) external {
@@ -256,8 +368,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             rarityToken
         );
         
-        // Set as active FeeContract
+        // Set as active FeeContract and track reverse mapping
         activeFeeContract[rarityToken] = address(newFeeContract);
+        feeContractToRarityToken[address(newFeeContract)] = rarityToken;
         
         return address(newFeeContract);
     }
@@ -279,8 +392,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             rarityToken
         );
         
-        // Set as active FeeContract (replaces current one)
+        // Set as active FeeContract and track reverse mapping (replaces current one)
         activeFeeContract[rarityToken] = address(newFeeContract);
+        feeContractToRarityToken[address(newFeeContract)] = rarityToken;
         
         return address(newFeeContract);
     }

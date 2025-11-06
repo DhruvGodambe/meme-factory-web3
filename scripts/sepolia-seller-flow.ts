@@ -43,6 +43,14 @@ const HOOK_ABI = [
   "function activeFeeContract(address rarityToken) view returns (address)",
   "function hasFeeContract(address rarityToken) view returns (bool)",
   "function deployNewFeeContract(address rarityToken) returns (address)",
+  "function setHotWallet(address hotWallet)",
+  "function fundHotWallet(uint256 amount)",
+  "function isFeeContractFull(address feeContractAddress) view returns (bool)",
+  "function getFeeContractHoldings(address feeContractAddress) view returns (uint256)",
+  "function getFeeContractFees(address feeContractAddress) view returns (uint256)",
+  "function getFeeContractInfo(address feeContractAddress) view returns (address, address, uint256, uint256, bool)",
+  "function hotWallet() view returns (address)",
+  "function isAuthorizedCaller(address caller) view returns (bool)",
 ];
 
 async function main() {
