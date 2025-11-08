@@ -39,9 +39,25 @@ const config: HardhatUserConfig = {
       gas: 8000000,
       timeout: 200000, // 200 seconds
     },
+    base: {
+      url: process.env.BASE_RPC_URL || process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org",
+      accounts: 
+        process.env.PRIVATE_KEY && process.env.PRIVATE_KEY.length === 64
+          ? [process.env.PRIVATE_KEY]
+          : [],
+      chainId: 8453,
+      gasPrice: 1000000, // 0.001 gwei (Base is very cheap)
+      gas: 3000000,
+      timeout: 120000, // 120 seconds
+    },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY || "",
+    apiKey: {
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
+      polygon: process.env.POLYGONSCAN_API_KEY || "",
+      base: process.env.BASESCAN_API_KEY || "",
+    },
     customChains: [
       {
         network: "sepolia",
@@ -57,6 +73,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://api.polygonscan.com/api",
           browserURL: "https://polygonscan.com"
+        }
+      },
+      {
+        network: "base",
+        chainId: 8453,
+        urls: {
+          apiURL: "https://api.etherscan.io/v2/api?chainid=8453",
+          browserURL: "https://basescan.org"
         }
       }
     ]

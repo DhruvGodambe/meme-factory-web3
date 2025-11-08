@@ -1,0 +1,17 @@
+{
+  "network": "base-mainnet",
+  "chainId": "8453",
+  "timestamp": "2025-11-07T18:10:58.122Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "contracts": {
+    "OpenSeaNFTBuyer": "0xf5C3Ba415B3bf7418D7bf384Ec518D7c29e4792e"
+  },
+  "config": {
+    "seaportAddress": "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC",
+    "baseChainId": "8453",
+    "owner": "0xF93E7518F79C2E1978D6862Dbf161270040e623E"
+  },
+  "gasUsed": "1286250",
+  "gasPrice": "7028552",
+  "deploymentCost": "0.00000904047501"
+}
