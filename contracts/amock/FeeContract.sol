@@ -9,6 +9,47 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import "./Interfaces.sol";
 
+// OpenSea Order Types (minimal subset needed)
+struct Order {
+    OrderParameters parameters;
+    bytes signature;
+}
+
+struct OrderParameters {
+    address offerer;
+    address zone;
+    OfferItem[] offer;
+    ConsiderationItem[] consideration;
+    uint8 orderType;
+    uint256 startTime;
+    uint256 endTime;
+    bytes32 zoneHash;
+    uint256 salt;
+    bytes32 conduitKey;
+    uint256 totalOriginalConsiderationItems;
+}
+
+struct OfferItem {
+    uint8 itemType;
+    address token;
+    uint256 identifierOrCriteria;
+    uint256 startAmount;
+    uint256 endAmount;
+}
+
+struct ConsiderationItem {
+    uint8 itemType;
+    address token;
+    uint256 identifierOrCriteria;
+    uint256 startAmount;
+    uint256 endAmount;
+    address payable recipient;
+}
+
+interface IOpenSeaNFTBuyer {
+    function buyNFT(Order calldata order) external payable;
+}
+
 /// @title FeeContract - Vault for NFT trading and RARITY buyback/burn
 contract FeeContract is ReentrancyGuard {
     /*                      CONSTANTS                      */
@@ -23,6 +64,7 @@ contract FeeContract is ReentrancyGuard {
     address public immutable rarityToken;
     address public immutable hookAddress;
     address public immutable factory;
+    IOpenSeaNFTBuyer public immutable openSeaBuyer;
 
     /*                   STATE VARIABLES                   */
 
@@ -62,13 +104,15 @@ contract FeeContract is ReentrancyGuard {
         address _hook,
         IUniswapV4Router04 _router,
         address _collection,
-        address _rarityToken
+        address _rarityToken,
+        address _openSeaBuyer
     ) {
         factory = _factory;
         hookAddress = _hook;
         router = _router;
         collection = IERC721(_collection);
         rarityToken = _rarityToken;
+        openSeaBuyer = IOpenSeaNFTBuyer(_openSeaBuyer);
     }
 
     /*                     MODIFIERS                       */
@@ -94,18 +138,33 @@ contract FeeContract is ReentrancyGuard {
 
     /*                 NFT TRADING FUNCTIONS               */
 
-    /// @notice Smart buy function that chooses between collection marketplace and previous FeeContract
+    /// @notice Smart buy function that chooses between OpenSea, collection marketplace and previous FeeContract
     function smartBuyNFT(
         uint256 tokenId,
-        address previousFeeContract
+        address previousFeeContract,
+        Order calldata openSeaOrder
     ) external nonReentrant {
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
         if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
 
         uint256 collectionPrice = 0;
         uint256 feeContractPrice = 0;
+        uint256 openSeaPrice = 0;
         bool availableOnCollection = false;
         bool availableOnFeeContract = false;
+        bool availableOnOpenSea = false;
+
+        // Check OpenSea price
+        if (openSeaOrder.parameters.offer.length > 0) {
+            OfferItem memory nftItem = openSeaOrder.parameters.offer[0];
+            if (nftItem.token == address(collection) && nftItem.identifierOrCriteria == tokenId) {
+                // Price is usually in consideration items (what buyer pays)
+                if (openSeaOrder.parameters.consideration.length > 0) {
+                    openSeaPrice = openSeaOrder.parameters.consideration[0].startAmount;
+                    availableOnOpenSea = true;
+                }
+            }
+        }
 
         // Check collection marketplace price
         try ICollectionWithListings(address(collection)).listings(tokenId) returns (address seller, uint256 price) {
@@ -128,28 +187,25 @@ contract FeeContract is ReentrancyGuard {
             } catch {}
         }
 
-        if (!availableOnCollection && !availableOnFeeContract) {
+        if (!availableOnCollection && !availableOnFeeContract && !availableOnOpenSea) {
             revert NFTNotForSale();
         }
 
-        // Choose the cheaper option
-        bool buyFromCollection = false;
-        uint256 purchasePrice = 0;
+        // Choose the cheapest option
+        uint256 purchasePrice = type(uint256).max;
+        uint8 buyFrom = 0; // 0: collection, 1: feeContract, 2: openSea
 
-        if (availableOnCollection && availableOnFeeContract) {
-            if (collectionPrice <= feeContractPrice) {
-                buyFromCollection = true;
-                purchasePrice = collectionPrice;
-            } else {
-                buyFromCollection = false;
-                purchasePrice = feeContractPrice;
-            }
-        } else if (availableOnCollection) {
-            buyFromCollection = true;
+        if (availableOnCollection && collectionPrice < purchasePrice) {
             purchasePrice = collectionPrice;
-        } else {
-            buyFromCollection = false;
+            buyFrom = 0;
+        }
+        if (availableOnFeeContract && feeContractPrice < purchasePrice) {
             purchasePrice = feeContractPrice;
+            buyFrom = 1;
+        }
+        if (availableOnOpenSea && openSeaPrice < purchasePrice) {
+            purchasePrice = openSeaPrice;
+            buyFrom = 2;
         }
 
         if (purchasePrice > currentFees) revert NotEnoughEth();
@@ -158,14 +214,17 @@ contract FeeContract is ReentrancyGuard {
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
         // Execute the purchase
-        if (buyFromCollection) {
+        if (buyFrom == 0) {
             // Buy from collection marketplace
             bytes memory buyData = abi.encodeWithSignature("buy(uint256)", tokenId);
             (bool success, bytes memory reason) = address(collection).call{value: purchasePrice}(buyData);
             if (!success) revert ExternalCallFailed(reason);
-        } else {
+        } else if (buyFrom == 1) {
             // Buy from previous FeeContract
             IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(tokenId);
+        } else {
+            // Buy from OpenSea
+            openSeaBuyer.buyNFT{value: purchasePrice}(openSeaOrder);
         }
 
         // Verify purchase success

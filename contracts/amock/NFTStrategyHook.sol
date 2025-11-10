@@ -51,6 +51,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     address public brandAssetHook;
     bool public brandAssetEnabled;
     address payable public routerAddress;
+    address public openSeaBuyer;
     
     // Hot wallet system
     address public hotWallet;
@@ -351,6 +352,15 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         routerAddress = _routerAddress;
     }
 
+    function setOpenSeaBuyer(address _openSeaBuyer) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        openSeaBuyer = _openSeaBuyer;
+    }
+
+    function getOpenSeaBuyer() external view returns (address) {
+        return openSeaBuyer;
+    }
+
     /// @notice Manually deploy a new FeeContract for a RARITY token
     /// @param rarityToken The RARITY token address to create a FeeContract for
     /// @return feeContract Address of the newly created FeeContract
@@ -365,7 +375,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             address(this),
             IUniswapV4Router04(routerAddress),
             collection,
-            rarityToken
+            rarityToken,
+            openSeaBuyer
         );
         
         // Set as active FeeContract and track reverse mapping
@@ -389,7 +400,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             address(this),
             IUniswapV4Router04(routerAddress),
             collection,
-            rarityToken
+            rarityToken,
+            openSeaBuyer
+
         );
         
         // Set as active FeeContract and track reverse mapping (replaces current one)
@@ -430,8 +443,11 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
                 // Buy and burn brand asset
                 _buyAndBurnBrandAsset(founderAmount);
             } else {
-                // Send to founder wallet
-                address destination = founderWallet != address(0) ? founderWallet : feeAddress;
+                // Send to the fee address set during launch (feeAddressClaimedByOwner)
+                // If not set, fallback to default feeAddress
+                address destination = feeAddressClaimedByOwner[rarityToken] != address(0) 
+                    ? feeAddressClaimedByOwner[rarityToken] 
+                    : feeAddress;
                 SafeTransferLib.forceSafeTransferETH(destination, founderAmount);
             }
         }

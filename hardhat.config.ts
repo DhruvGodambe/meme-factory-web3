@@ -10,7 +10,7 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 1, // Low runs optimize for deployment size
       },
       viaIR: true,
       evmVersion: "cancun", // Enable Cancun EVM features including transient storage

@@ -20,7 +20,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     /*                       CONSTANTS                      */
 
     uint256 private constant ethToPair = 2 wei;
-    uint256 private constant initialBuy = 0.125 ether;
+    uint256 private constant initialBuy = 10000000000000 wei;
     IPositionManager private immutable posm;
     IAllowanceTransfer private immutable permit2;
     IUniswapV4Router04 private immutable router;
@@ -259,8 +259,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     function ownerLaunchNFTStrategy(
         address collection,
         string memory tokenName,
-        string memory tokenSymbol,
-        address collectionOwner
+        string memory tokenSymbol
     ) external payable onlyOwner returns (NFTStrategy) {
         if (hookAddress == address(0)) revert HookNotSet();
         if (collectionToNFTStrategy[collection] != address(0)) revert CollectionAlreadyLaunched();
@@ -279,7 +278,12 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
 
         _loadLiquidity(address(nftStrategy));
 
-        INFTStrategyHook(hookAddress).adminUpdateFeeAddress(address(nftStrategy), collectionOwner);
+        INFTStrategyHook(hookAddress).adminUpdateFeeAddress(address(nftStrategy), feeAddress);
+
+        // Add initial token purchase to ensure token appears on Uniswap interface
+        if (msg.value >= initialBuy) {
+            _buyTokens(initialBuy, address(nftStrategy), msg.sender);
+        }
 
         emit NFTStrategyLaunched(collection, address(nftStrategy), tokenName, tokenSymbol);
 
@@ -321,11 +325,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
 
         _loadLiquidity(address(nftStrategy));
 
-        if (collectionOwnerFromContract != address(0)) {
-            INFTStrategyHook(hookAddress).adminUpdateFeeAddress(address(nftStrategy), collectionOwnerFromContract);
-        } else {
-            INFTStrategyHook(hookAddress).adminUpdateFeeAddress(address(nftStrategy), feeAddress);
-        }
+        INFTStrategyHook(hookAddress).adminUpdateFeeAddress(address(nftStrategy), feeAddress);
 
         _buyTokens(initialBuy, address(nftStrategy), msg.sender);
 

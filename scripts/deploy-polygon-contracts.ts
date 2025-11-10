@@ -45,10 +45,22 @@ async function main() {
   console.log("Current maxFeePerGas:", feeData.maxFeePerGas?.toString(), "wei");
   console.log("Current maxPriorityFeePerGas:", feeData.maxPriorityFeePerGas?.toString(), "wei");
 
-  // Polygon addresses
-  const POOL_MANAGER = "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543";
-  const POSITION_MANAGER = "0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4";
-  const UNIVERSAL_ROUTER = "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b";
+  // Network detection and optimization
+  const network = await ethers.provider.getNetwork();
+  const chainId = Number(network.chainId);
+  console.log("🌐 Detected network chain ID:", chainId);
+  
+  let isBaseNetwork = chainId === 8453 || chainId === 84532; // Base mainnet or testnet
+  if (isBaseNetwork) {
+    console.log("🔵 Base network detected - using optimized settings for Base L2");
+  } else {
+    console.log("🟣 Polygon network detected");
+  }
+
+  // Network-specific addresses
+  const POOL_MANAGER = "0x498581ff718922c3f8e6a244956af099b2652b2b";
+  const POSITION_MANAGER = "0x7c5f5a4bbd8fd63184577525326123b519429bdc";
+  const UNIVERSAL_ROUTER = "0x6ff5693b99212da76ad316178a184ab56d299b43";
   const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
   const FEE_ADDRESS = "0xF93E7518F79C2E1978D6862Dbf161270040e623E";
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97"
@@ -67,7 +79,17 @@ async function main() {
   // Delay between deployments
   await new Promise(resolve => setTimeout(resolve, 2000));
 
-  console.log("\n=== Step 2: Deploy FakeNFTCollection ===");
+  console.log("\n=== Step 2: Deploy OpenSeaNFTBuyer ===");
+  const OpenSeaNFTBuyer = await ethers.getContractFactory("OpenSeaNFTBuyer");
+  const openSeaBuyer = await OpenSeaNFTBuyer.deploy();
+  await openSeaBuyer.waitForDeployment();
+  const openSeaBuyerAddress = await openSeaBuyer.getAddress();
+  console.log("OpenSeaNFTBuyer deployed to:", openSeaBuyerAddress);
+
+  // Delay between deployments
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  console.log("\n=== Step 3: Deploy FakeNFTCollection ===");
   const FakeNFTCollection = await ethers.getContractFactory("FakeNFTCollection");
   const nftCollection = await FakeNFTCollection.deploy(
     "Test NFT Collection",
@@ -81,7 +103,7 @@ async function main() {
   // Delay between deployments
   await new Promise(resolve => setTimeout(resolve, 2000));
 
-  console.log("\n=== Step 3: Deploy NFTStrategyHookMiner ===");
+  console.log("\n=== Step 4: Deploy NFTStrategyHookMiner ===");
   const NFTStrategyHookMiner = await ethers.getContractFactory("NFTStrategyHookMiner");
   const hookMiner = await NFTStrategyHookMiner.deploy(
     POOL_MANAGER,
@@ -99,7 +121,7 @@ async function main() {
 //     console.log("WARNING: Using Universal Router as V4Router. Update when V4Router is deployed on Polygon.");
 //   }
 
-  console.log("\n=== Step 4: Deploy NFTStrategyFactory (needed for hook deployment) ===");
+  console.log("\n=== Step 5: Deploy NFTStrategyFactory (needed for hook deployment) ===");
   
   // Wait a bit before deployment
   await new Promise(resolve => setTimeout(resolve, 2000));
@@ -119,7 +141,7 @@ async function main() {
   const factoryAddress = await factory.getAddress();
   console.log("NFTStrategyFactory deployed to:", factoryAddress);
 
-  console.log("\n=== Step 5: Mine Salt for NFTStrategyHook ===");
+  console.log("\n=== Step 6: Mine Salt for NFTStrategyHook ===");
   
   // Check if salt is already mined
   const [existingHookAddress, existingSalt, isMined] = await hookMiner.getMinedData();
@@ -128,16 +150,41 @@ async function main() {
     console.log("Mined Hook Address:", existingHookAddress);
     console.log("Mined Salt:", existingSalt);
   } else {
-    console.log("⏳ Mining salt (this may take a while depending on difficulty)...");
-    console.log("⚠️  Be patient! Salt mining can take several minutes to hours.");
-    console.log("💡 Mining with optimized gas settings...");
+    console.log("⏳ Mining salt with optimized parameters for Base network...");
+    console.log("💡 Using adaptive mining strategy...");
+    
+    // Pre-mining analysis
+    console.log("🔍 Analyzing mining conditions...");
+    try {
+      const estimatedGas = await hookMiner.mineSalt.estimateGas(
+        restrictedTokenAddress,
+        factoryAddress,
+        FEE_ADDRESS
+      );
+      console.log("📊 Estimated gas for mining:", estimatedGas.toString());
+      
+      // If estimation fails or is too high, warn user
+      if (estimatedGas > BigInt(25_000_000)) {
+        console.log("⚠️  Warning: High gas estimation detected. This might indicate mining difficulty.");
+        console.log("   Consider waiting for better network conditions or using a different approach.");
+      }
+    } catch (estimateError) {
+      console.log("⚠️  Could not estimate gas - proceeding with adaptive strategy");
+    }
     
     // Wait for next block to avoid nonce issues
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Use multiple attempts with different gas strategies
+    // Get current network conditions
+    const latestBlock = await ethers.provider.getBlock('latest');
+    const baseGasLimit = latestBlock?.gasLimit ? Number(latestBlock.gasLimit) * 0.8 : 30_000_000;
+    
+    console.log("📊 Network Analysis:");
+    console.log("   Latest block gas limit:", latestBlock?.gasLimit?.toString());
+    console.log("   Recommended max gas:", Math.floor(baseGasLimit).toLocaleString());
+    
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 8; // Increased attempts
     let mineSaltTx;
     
     while (attempts < maxAttempts) {
@@ -145,37 +192,72 @@ async function main() {
         attempts++;
         console.log(`🎯 Mining attempt ${attempts}/${maxAttempts}...`);
         
-        // Progressive gas limit strategy
-        const gasLimit = Math.min(15_000_000 + (attempts * 500_000), 30_000_000);
-        const gasPrice = feeData.gasPrice ? BigInt(Math.floor(Number(feeData.gasPrice) * (1 + attempts * 0.1))) : BigInt(1_000_000);
+        // Optimized gas strategy for Base network
+        let gasLimit, gasPrice;
         
+        if (attempts <= 3) {
+          // Conservative approach first
+          gasLimit = Math.min(5_000_000 + (attempts * 2_000_000), 15_000_000);
+          gasPrice = feeData.gasPrice ? 
+            BigInt(Math.floor(Number(feeData.gasPrice) * (1 + attempts * 0.05))) : 
+            BigInt(1_000_000_000); // 1 gwei base
+        } else if (attempts <= 6) {
+          // Moderate increase
+          gasLimit = Math.min(12_000_000 + (attempts * 3_000_000), 25_000_000);
+          gasPrice = feeData.gasPrice ? 
+            BigInt(Math.floor(Number(feeData.gasPrice) * (1.2 + attempts * 0.1))) : 
+            BigInt(2_000_000_000); // 2 gwei
+        } else {
+          // Aggressive final attempts
+          gasLimit = Math.min(20_000_000 + (attempts * 2_000_000), Math.floor(baseGasLimit));
+          gasPrice = feeData.gasPrice ? 
+            BigInt(Math.floor(Number(feeData.gasPrice) * (1.5 + attempts * 0.15))) : 
+            BigInt(5_000_000_000); // 5 gwei
+        }
+        
+        console.log(`   Strategy: ${attempts <= 3 ? 'Conservative' : attempts <= 6 ? 'Moderate' : 'Aggressive'}`);
         console.log(`   Gas limit: ${gasLimit.toLocaleString()}`);
-        console.log(`   Gas price: ${gasPrice.toString()}`);
+        console.log(`   Gas price: ${(Number(gasPrice) / 1e9).toFixed(2)} gwei`);
+        
+        // Add transaction options for Base network
+        const txOptions: any = {
+          gasLimit: gasLimit,
+          gasPrice: gasPrice,
+          nonce: await ethers.provider.getTransactionCount(deployer.address, 'pending')
+        };
+        
+        // For Base network, we might want to use EIP-1559
+        if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas && attempts > 3) {
+          delete txOptions.gasPrice;
+          txOptions.maxFeePerGas = BigInt(Math.floor(Number(feeData.maxFeePerGas) * (1.2 + attempts * 0.1)));
+          txOptions.maxPriorityFeePerGas = BigInt(Math.floor(Number(feeData.maxPriorityFeePerGas) * (1.1 + attempts * 0.05)));
+          console.log(`   Max fee per gas: ${(Number(txOptions.maxFeePerGas) / 1e9).toFixed(2)} gwei`);
+          console.log(`   Max priority fee: ${(Number(txOptions.maxPriorityFeePerGas) / 1e9).toFixed(2)} gwei`);
+        }
         
         mineSaltTx = await hookMiner.mineSalt(
           restrictedTokenAddress,
           factoryAddress,
           FEE_ADDRESS,
-          {
-            gasLimit: gasLimit,
-            gasPrice: gasPrice
-          }
+          txOptions
         );
         
         console.log("⏳ Salt mining transaction submitted:", mineSaltTx.hash);
         console.log("⏳ Waiting for confirmation...");
         
-        const receipt = await mineSaltTx.wait();
+        // Increased timeout for mining operations
+        const receipt = await mineSaltTx.wait(1);
         if (receipt) {
           if (receipt.status === 1) {
             console.log("✅ Salt mining successful in block:", receipt.blockNumber);
             console.log("Gas used:", receipt.gasUsed.toString());
+            console.log("Effective gas price:", receipt.gasPrice?.toString(), "wei");
             break;
           } else {
             console.log(`❌ Attempt ${attempts} failed - transaction reverted`);
             if (attempts < maxAttempts) {
-              console.log("🔄 Retrying with higher gas limit...");
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              console.log("🔄 Retrying with optimized parameters...");
+              await new Promise(resolve => setTimeout(resolve, 2000 + attempts * 1000));
             }
           }
         }
@@ -183,15 +265,53 @@ async function main() {
       } catch (error: any) {
         console.log(`❌ Attempt ${attempts} failed:`, error.message);
         
+        // Analyze the error for better retry strategy
+        if (error.message.includes('gas') || error.message.includes('limit')) {
+          console.log("💡 Gas-related error detected, adjusting strategy...");
+        } else if (error.message.includes('nonce')) {
+          console.log("💡 Nonce error detected, refreshing nonce...");
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } else if (error.message.includes('reverted') && attempts <= 6) {
+          console.log("� Transaction reverted - the mining might need more computational power");
+        }
+        
         if (attempts < maxAttempts) {
-          console.log("🔄 Retrying with adjusted parameters...");
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          const waitTime = Math.min(3000 + attempts * 2000, 15000);
+          console.log(`🔄 Waiting ${waitTime/1000}s before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         } else {
-          console.log("💀 All mining attempts failed. Possible solutions:");
-          console.log("1. Try again later when network is less congested");
-          console.log("2. Increase gas price manually");
-          console.log("3. Use a different RPC endpoint");
-          console.log("4. Consider mining salt off-chain");
+          console.log("💀 All mining attempts failed. Solutions:");
+          console.log("1. 🔧 Try with even higher gas limits manually");
+          console.log("2. ⏰ Wait for network congestion to decrease");
+          console.log("3. 🌐 Switch to a faster/less congested RPC endpoint");
+          console.log("4. 💻 Consider mining salt off-chain with a dedicated script");
+          console.log("5. 🔄 Run the script again - sometimes it works on retry");
+          console.log("6. 📈 Check Base network gas tracker for optimal timing");
+          
+          // Don't throw immediately, let's try a final Hail Mary attempt
+          if (attempts === maxAttempts) {
+            console.log("🚨 Final attempt with maximum settings...");
+            try {
+              const hailMaryTx = await hookMiner.mineSalt(
+                restrictedTokenAddress,
+                factoryAddress,
+                FEE_ADDRESS,
+                {
+                  gasLimit: Math.floor(baseGasLimit * 0.9),
+                  gasPrice: feeData.gasPrice ? BigInt(Number(feeData.gasPrice) * 3) : BigInt(10_000_000_000),
+                  nonce: await ethers.provider.getTransactionCount(deployer.address, 'pending')
+                }
+              );
+              const hailMaryReceipt = await hailMaryTx.wait(1);
+              if (hailMaryReceipt && hailMaryReceipt.status === 1) {
+                console.log("🎉 Hail Mary attempt succeeded!");
+                break;
+              }
+            } catch (finalError: any) {
+              console.log("💀 Final attempt also failed:", finalError.message);
+            }
+          }
+          
           throw new Error(`Salt mining failed after ${maxAttempts} attempts: ${error.message}`);
         }
       }
@@ -203,7 +323,7 @@ async function main() {
   console.log("Mined Hook Address:", finalMinedHookAddress);
   console.log("Mined Salt:", finalMinedSalt);
 
-  console.log("\n=== Step 6: Deploy NFTStrategyHook using CREATE2 ===");
+  console.log("\n=== Step 7: Deploy NFTStrategyHook using CREATE2 ===");
   console.log("⏳ Deploying hook with CREATE2 (mined salt)...");
   
   // Wait before deployment
@@ -266,7 +386,46 @@ async function main() {
     throw new Error("Hook address mismatch!");
   }
 
-  console.log("\n=== Step 7: Configure Factory ===");
+  console.log("\n=== Step 8: Configure Hook with OpenSeaBuyer ===");
+  
+  // First set the OpenSeaBuyer in the hook
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  try {
+    // Use direct contract call instead of ethers contract factory attachment
+    const setOpenSeaTx = await deployer.sendTransaction({
+      to: actualHookAddress,
+      data: ethers.id("setOpenSeaBuyer(address)").slice(0, 10) + 
+            ethers.zeroPadValue(openSeaBuyerAddress, 32).slice(2),
+      gasLimit: 100000
+    });
+    await setOpenSeaTx.wait();
+    console.log("✅ OpenSeaBuyer address set in Hook:", openSeaBuyerAddress);
+  } catch (error: any) {
+    console.log("⚠️  OpenSeaBuyer configuration failed - will need manual setup");
+    console.log("Error:", error.message);
+    console.log("📋 Manual configuration needed:");
+    console.log(`   hook.setOpenSeaBuyer("${openSeaBuyerAddress}")`);
+  }
+
+  // Configure router address in hook (needed for FeeContract deployments)
+  try {
+    console.log("⏳ Setting router address in hook...");
+    const setRouterTx = await deployer.sendTransaction({
+      to: actualHookAddress,
+      data: ethers.id("setRouterAddress(address)").slice(0, 10) + 
+            ethers.zeroPadValue(ROUTER, 32).slice(2),
+      gasLimit: 100000
+    });
+    await setRouterTx.wait();
+    console.log("✅ Router address set in Hook:", ROUTER);
+  } catch (error: any) {
+    console.log("⚠️  Router address configuration failed");
+    console.log("📋 Manual configuration needed:");
+    console.log(`   hook.setRouterAddress("${ROUTER}")`);
+  }
+
+  console.log("\n=== Step 9: Configure Factory ===");
   
   // Wait a bit before next transaction to avoid nonce issues
   await new Promise(resolve => setTimeout(resolve, 2000));
@@ -294,7 +453,7 @@ async function main() {
   await setCollectionOwnerTx.wait();
   console.log("Collection owner launches enabled");
 
-  console.log("\n=== Step 8: Configure RestrictedToken ===");
+  console.log("\n=== Step 10: Configure RestrictedToken ===");
   const setPoolManagerTx = await restrictedToken.setPoolManager(POOL_MANAGER);
   await setPoolManagerTx.wait();
   console.log("PoolManager set in RestrictedToken");
@@ -312,7 +471,7 @@ async function main() {
   await enableTradingTx.wait();
   console.log("Trading enabled for RestrictedToken");
 
-  console.log("\n=== Step 9: Save Deployment Info ===");
+  console.log("\n=== Step 11: Save Deployment Info ===");
   const deploymentInfo = {
     network: "polygon",
     timestamp: new Date().toISOString(),
@@ -323,6 +482,7 @@ async function main() {
       NFTStrategyFactory: factoryAddress,
       RestrictedToken: restrictedTokenAddress,
       FakeNFTCollection: nftCollectionAddress,
+      OpenSeaNFTBuyer: openSeaBuyerAddress,
       minedHookAddress: finalMinedHookAddress,
       minedSalt: finalMinedSalt,
     },
@@ -343,7 +503,7 @@ async function main() {
   fs.writeFileSync(filepath, JSON.stringify(deploymentInfo, null, 2));
   console.log("\nDeployment info saved to:", filename);
 
-  console.log("\n=== Step 10: Additional Configuration (Optional) ===");
+  console.log("\n=== Step 12: Additional Configuration (Optional) ===");
   
   // TWAP increment is already set to 1 ether in the contract
 
@@ -362,6 +522,7 @@ async function main() {
   console.log("✓ NFTStrategyFactory:", factoryAddress);
   console.log("✓ RestrictedToken:", restrictedTokenAddress);
   console.log("✓ FakeNFTCollection:", nftCollectionAddress);
+  console.log("✓ OpenSeaNFTBuyer:", openSeaBuyerAddress);
   console.log("✓ Mined Salt:", finalMinedSalt);
   console.log("\n📋 Configuration:");
   console.log("  - Public Launches: ENABLED");
@@ -376,6 +537,12 @@ async function main() {
   console.log("2. Transfer ownership if needed");
   console.log("3. Fund the factory for TWAP operations");
   console.log("4. Test with the FakeNFTCollection launch");
+  console.log("5. If OpenSeaBuyer config failed, manually call:");
+  console.log(`   hook.setOpenSeaBuyer("${openSeaBuyerAddress}")`);
+  console.log("6. Deploy FeeContracts for collections:");
+  console.log("   hook.deployNewFeeContract(rarityTokenAddress)");
+  console.log("7. Configure hook router address:");
+  console.log(`   hook.setRouterAddress("${ROUTER}")`);
 }
 
 main()
