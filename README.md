@@ -32,7 +32,7 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 
 The protocol is fully integrated with Uniswap V4 on Base Mainnet. Users can swap ETH for RARITY tokens directly through Uniswap's interface, with the hook automatically collecting and distributing fees.
 
-![Uniswap V4 Swap Interface](Screenshot 2025-11-12 010646.png)
+![Uniswap V4 Swap Interface](./images/uniswap-v4-swap-interface.png)
 
 *Example swap interface showing RARITY token (RT) trading on Uniswap V4 with fee collection (15% fee shown in the transaction details)*
 
