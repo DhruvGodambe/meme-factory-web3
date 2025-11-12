@@ -71,7 +71,56 @@ contract NFTStrategyHookMiner {
     }
     
     /**
-     * @notice Mine salt for NFTStrategyHook deployment
+     * @notice Simulate salt mining off-chain (view function, 0 gas)
+     * @param restrictedToken The RestrictedToken contract address
+     * @param nftStrategyFactory The NFTStrategyFactory contract address
+     * @param feeAddress The fee address
+     * @return hookAddress The address where the hook will be deployed
+     * @return salt The salt to use for deployment
+     */
+    function simulateSalt(
+        address restrictedToken,
+        address nftStrategyFactory,
+        address feeAddress
+    ) external view returns (address hookAddress, bytes32 salt) {
+        uint160 flags = getRequiredFlags();
+        bytes memory creationCode = type(NFTStrategyHook).creationCode;
+        bytes memory constructorArgs = abi.encode(
+            poolManager,
+            RestrictedToken(restrictedToken),
+            INFTStrategyFactory(nftStrategyFactory),
+            feeAddress
+        );
+        
+        // Off-chain simulated mining (view function)
+        return HookMiner.find(
+            address(this), // deployer will be this contract
+            flags,
+            creationCode,
+            constructorArgs
+        );
+    }
+
+    /**
+     * @notice Store pre-computed salt values (bypasses expensive mining)
+     * @param hookAddress The pre-computed hook address
+     * @param salt The pre-computed salt
+     */
+    function storeSalt(
+        address hookAddress,
+        bytes32 salt
+    ) external onlyOwner {
+        if (saltMined) revert();
+        
+        minedHookAddress = hookAddress;
+        minedSalt = salt;
+        saltMined = true;
+        
+        emit SaltMined(hookAddress, salt);
+    }
+
+    /**
+     * @notice Mine salt for NFTStrategyHook deployment (optimized with pre-computed values)
      * @param restrictedToken The RestrictedToken contract address
      * @param nftStrategyFactory The NFTStrategyFactory contract address
      * @param feeAddress The fee address
@@ -96,7 +145,7 @@ contract NFTStrategyHookMiner {
             feeAddress
         );
         
-        // Use the official HookMiner library
+        // Use the official HookMiner library (lightweight since pre-simulated)
         (hookAddress, salt) = HookMiner.find(
             address(this), // deployer will be this contract
             flags,

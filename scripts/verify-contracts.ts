@@ -1,5 +1,5 @@
 import { run } from "hardhat";
-import deploymentInfo from "../deployment-polygon-1762435996407.json";
+import deploymentInfo from "../deployment-sepolia-1762881133127.json";
 
 async function main() {
   console.log("🔍 Starting contract verification on Etherscan...");
