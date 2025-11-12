@@ -378,48 +378,206 @@ graph TD
    - If no FeeContract exists, entire 15% goes to founder
 4. **Vault Accumulation**: FeeContract accumulates ETH in `currentFees`
 
-### 4. NFT Trading Flow
+> **Note**: For detailed information on FeeContract fee collection, deployment, and rotation, see [Section 4: FeeContract Deployment and Management Flow](#4-feecontract-deployment-and-management-flow).
 
-1. **NFT Listing**: User lists NFT on collection marketplace via `collection.list(tokenId, price)`
-2. **Smart Purchase**: Off-chain service calls `FeeContract.smartBuyNFT()`:
-   - Provides tokenId, previous FeeContract address (optional), OpenSea order (optional)
-   - Contract compares prices from all sources
-   - Contract purchases from cheapest valid source
-   - Contract verifies NFT ownership after purchase
-3. **NFT Listing**: Contract lists NFT with 20% markup:
-   - `salePrice = purchasePrice * priceMultiplier / 1000`
-   - `nftForSale[tokenId] = salePrice`
-   - `currentHoldings++`
-4. **User Purchase**: User calls `FeeContract.sellTargetNFT(tokenId)` with exact ETH amount
-5. **Sale Completion**: Contract transfers NFT to user, accumulates ETH in `ethToTwap`
+### 4. FeeContract Deployment and Management Flow
 
-### 5. TWAP Buyback Flow
+#### 4.1 Initial FeeContract Deployment
+
+1. **Admin Decision**: Factory owner decides to deploy FeeContract for a RARITY token
+2. **Deployment Call**: Admin calls `NFTStrategyHook.deployNewFeeContract(rarityToken)`:
+   - Hook validates caller is factory owner
+   - Hook retrieves collection address from factory mapping
+   - Hook validates collection exists and is not zero address
+   - Hook deploys new `FeeContract` contract with:
+     - Factory address
+     - Hook address
+     - Uniswap V4 Router address
+     - Collection address
+     - RARITY token address
+     - OpenSea buyer address
+3. **Registration**: Hook registers new FeeContract:
+   - Sets `activeFeeContract[rarityToken] = newFeeContract`
+   - Sets `feeContractToRarityToken[newFeeContract] = rarityToken`
+   - Creates bidirectional mapping for lookup
+4. **Fee Routing**: After deployment, all future fees (14% of swap fees) are routed to this FeeContract
+
+#### 4.2 Fee Collection Flow
+
+1. **Swap Occurs**: User swaps ETH for RARITY tokens (or vice versa) on Uniswap V4
+2. **Fee Calculation**: Hook calculates 15% fee from swap amount
+3. **Fee Distribution**: Hook's `_processFees()` function:
+   - Calculates 14% vault portion and 1% founder portion
+   - Checks if active FeeContract exists for RARITY token
+   - If FeeContract exists:
+     - Calls `activeFeeContract.addFees{value: vaultAmount}()`
+     - FeeContract receives ETH and increments `currentFees`
+     - Emits `FeesAdded` event
+   - If no FeeContract exists:
+     - Entire 15% goes to founder wallet
+   - 1% always goes to founder wallet (or fee address)
+4. **Fee Accumulation**: FeeContract accumulates ETH in `currentFees` state variable
+5. **Usage**: Accumulated fees can be used for:
+   - NFT purchases via `smartBuyNFT()` or `buyTargetNFT()`
+   - TWAP buyback operations
+   - Emergency withdrawal (factory owner only)
+
+#### 4.3 FeeContract Rotation Flow
+
+1. **Monitoring**: Admin or off-chain service monitors FeeContract:
+   - Checks `currentHoldings` (should be < 5)
+   - Monitors `isFull()` status
+   - Tracks capacity via `getFeeContractHoldings()` (hot wallet authorized)
+2. **Rotation Decision**: Admin decides to rotate FeeContract:
+   - Option A: Deploy new FeeContract (current continues operating)
+   - Option B: Force rotate (replaces current FeeContract)
+3. **New Deployment**: Admin calls `deployNewFeeContract(rarityToken)`:
+   - New FeeContract deployed with same parameters
+   - New FeeContract set as active for RARITY token
+   - Previous FeeContract remains accessible but inactive
+   - Previous FeeContract can still sell NFTs to users
+4. **Force Rotation**: Admin calls `forceRotateFeeContract(rarityToken)`:
+   - Deploys new FeeContract (even if current is not full)
+   - Replaces current active FeeContract immediately
+   - All future fees go to new FeeContract
+   - Previous FeeContract can still sell its NFTs
+5. **Previous FeeContract**: Previous FeeContract:
+   - Can still receive direct purchases via `sellTargetNFT()`
+   - Can be used as source for smart buys in new FeeContract
+   - Retains its NFTs and ETH balance
+   - Can execute TWAP on accumulated `ethToTwap`
+
+### 5. NFT Trading Flow - Smart Buying System
+
+#### 5.1 Smart Buy Function - Price Comparison and Purchase
+
+The FeeContract implements a sophisticated smart buying system that compares prices across multiple sources and purchases from the cheapest available option.
+
+1. **Price Discovery**: Off-chain service or admin calls `FeeContract.smartBuyNFT(tokenId, previousFeeContract, openSeaOrder)`:
+   - **Collection Marketplace Check**:
+     - Calls `ICollectionWithListings.listings(tokenId)`
+     - Retrieves seller address and price
+     - Validates listing exists (seller ≠ address(0), price > 0)
+     - Sets `collectionPrice` and `availableOnCollection = true`
+   - **Previous FeeContract Check**:
+     - If `previousFeeContract` is provided (≠ address(0)):
+       - Calls `IFeeContract(previousFeeContract).nftForSale(tokenId)`
+       - Retrieves sale price from previous vault
+       - Verifies previous FeeContract actually owns the NFT
+       - Sets `feeContractPrice` and `availableOnFeeContract = true`
+   - **OpenSea Check**:
+     - If `openSeaOrder` is provided:
+       - Validates order parameters (NFT token, tokenId match)
+       - Extracts price from consideration items (what buyer pays)
+       - Sets `openSeaPrice` and `availableOnOpenSea = true`
+
+2. **Price Comparison Algorithm**:
+   - Initializes `purchasePrice = type(uint256).max`
+   - Compares all available sources:
+     - If collection marketplace available and `collectionPrice < purchasePrice`:
+       - Sets `purchasePrice = collectionPrice`, `buyFrom = 0`
+     - If previous FeeContract available and `feeContractPrice < purchasePrice`:
+       - Sets `purchasePrice = feeContractPrice`, `buyFrom = 1`
+     - If OpenSea available and `openSeaPrice < purchasePrice`:
+       - Sets `purchasePrice = openSeaPrice`, `buyFrom = 2`
+   - Selects cheapest valid option
+
+3. **Validation**:
+   - Checks `currentHoldings < MAX_NFTS` (5 NFTs max)
+   - Validates NFT not already owned by current FeeContract
+   - Validates `purchasePrice <= currentFees` (sufficient ETH balance)
+   - Reverts if no valid source found
+
+4. **Purchase Execution**:
+   - **From Collection Marketplace** (`buyFrom = 0`):
+     - Calls `collection.buy(tokenId)` with `purchasePrice` ETH
+     - Executes marketplace purchase
+   - **From Previous FeeContract** (`buyFrom = 1`):
+     - Calls `previousFeeContract.sellTargetNFT{value: purchasePrice}(tokenId)`
+     - Purchases from previous vault at floor price
+   - **From OpenSea** (`buyFrom = 2`):
+     - Calls `openSeaBuyer.buyNFT{value: purchasePrice}(openSeaOrder)`
+     - Fulfills Seaport order via OpenSea buyer contract
+
+5. **Purchase Verification**:
+   - Verifies NFT balance increased by 1
+   - Verifies FeeContract owns the NFT (`collection.ownerOf(tokenId) == address(this)`)
+   - Calculates actual cost (`ethBalanceBefore - ethBalanceAfter`)
+   - Reverts if verification fails
+
+6. **State Updates**:
+   - Deducts actual cost from `currentFees`
+   - Increments `currentHoldings`
+   - Calculates sale price with markup: `salePrice = actualCost * priceMultiplier / 1000`
+   - Sets `nftForSale[tokenId] = salePrice`
+   - Emits `NFTBoughtByProtocol(tokenId, purchasePrice, salePrice)` event
+
+#### 5.2 Simple Buy Function - Direct Purchase
+
+For direct purchases from arbitrary sources (not covered by smart buy):
+
+1. **Call**: Admin or authorized caller calls `FeeContract.buyTargetNFT(value, data, expectedId, target)`:
+   - Provides ETH value, calldata, expected tokenId, and target address
+2. **Validation**:
+   - Checks `currentHoldings < MAX_NFTS`
+   - Validates NFT not already owned
+   - Validates `value <= currentFees`
+3. **Purchase Execution**:
+   - Makes external call to target with ETH value and calldata
+   - Verifies NFT received (balance check)
+   - Verifies ownership of expected tokenId
+4. **State Updates**:
+   - Deducts cost from `currentFees`
+   - Increments `currentHoldings`
+   - Lists NFT with markup
+   - Emits purchase event
+
+#### 5.3 Simple Sell Function - Direct Sale
+
+1. **User Purchase**: User calls `FeeContract.sellTargetNFT(tokenId)` with exact ETH amount:
+   - User must send exact `salePrice` (from `nftForSale[tokenId]`)
+2. **Validation**:
+   - Validates `salePrice > 0` (NFT is for sale)
+   - Validates `msg.value == salePrice` (exact price paid)
+   - Validates FeeContract owns the NFT
+3. **Sale Execution**:
+   - Transfers NFT from FeeContract to user via `collection.transferFrom()`
+   - Deletes `nftForSale[tokenId]` mapping
+   - Accumulates ETH in `ethToTwap` for buyback operations
+   - **Note**: `currentHoldings` is NOT decremented (NFT was bought to be held)
+4. **Completion**:
+   - Emits `NFTSoldByProtocol(tokenId, salePrice, buyer)` event
+   - ETH accumulates for TWAP buyback
+
+#### 5.4 Price Markup System
+
+- **Default Markup**: 20% (priceMultiplier = 1200)
+- **Calculation**: `salePrice = purchasePrice * 1200 / 1000`
+- **Configurable**: Factory owner can update `priceMultiplier` (1100-10000 range)
+- **Purpose**: Ensures FeeContract profits from NFT trades, funding TWAP buyback
+
+### 6. TWAP Buyback Flow
 
 1. **Accumulation**: ETH accumulates in `FeeContract.ethToTwap` from NFT sales
 2. **Trigger**: Anyone calls `FeeContract.processTokenTwap()` after delay period
 3. **Validation**: Contract checks:
    - `ethToTwap > 0`
-   - `block.number >= lastTwapBlock + TWAP_DELAY_BLOCKS`
+   - `block.number >= lastTwapBlock + TWAP_DELAY_BLOCKS` (1 block minimum)
 4. **Execution**: Contract:
-   - Calculates burn amount (min of `ethToTwap` and `TWAP_INCREMENT`)
-   - Calculates caller reward (0.5% of burn amount)
-   - Swaps ETH for RARITY tokens via Uniswap V4
-   - Sends RARITY tokens to dead address (burn)
+   - Calculates burn amount (min of `ethToTwap` and `TWAP_INCREMENT` = 1 ETH)
+   - Calculates caller reward (0.5% of burn amount = 5 basis points)
+   - Deducts reward from burn amount
+   - Swaps ETH for RARITY tokens via Uniswap V4:
+     - Creates PoolKey with ETH and RARITY token
+     - Calls router `swapExactTokensForTokens()` with burn amount
+     - Sends RARITY tokens to dead address (0x...dEaD) for burn
    - Sends reward to caller
-   - Updates `lastTwapBlock` and `ethToTwap`
-5. **Event**: Contract emits `BuybackAndBurn` event with ETH amount and tokens burned
-
-### 6. FeeContract Rotation Flow
-
-1. **Monitoring**: Admin or off-chain service monitors FeeContract capacity
-2. **Deployment**: Admin calls `NFTStrategyHook.deployNewFeeContract(rarityToken)`:
-   - Contract deploys new FeeContract with collection and RARITY token
-   - Contract sets new FeeContract as active for RARITY token
-   - Contract stores reverse mapping (FeeContract → RARITY token)
-3. **Rotation**: Admin can force rotation via `forceRotateFeeContract(rarityToken)`:
-   - Deploys new FeeContract (even if current is not full)
-   - Replaces current active FeeContract
-4. **Previous Vault**: Previous FeeContract can still sell NFTs to users or new FeeContract
+   - Updates `lastTwapBlock = block.number`
+   - Updates `ethToTwap -= (burnAmount + reward)`
+5. **Event**: Contract emits `BuybackAndBurn(ethAmount, rarityBurned)` event
+6. **Direct Buyback**: Alternative function `buybackAndBurn(amountIn)`:
+   - Allows direct buyback from `currentFees` (no delay, no reward)
+   - Useful for immediate buyback without waiting for delay
 
 ## ⚙️ Protocol Configuration
 
