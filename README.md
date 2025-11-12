@@ -4,6 +4,46 @@
 
 The **Rarity Town Protocol** is a decentralized protocol that creates ERC20 tokens (RARITY tokens) representing NFT collection strategies. Each RARITY token is paired with its underlying NFT collection and traded on Uniswap V4, with a sophisticated fee system that funds NFT vaults, enables buyback-and-burn mechanisms, and supports NFT trading through FeeContracts.
 
+## 🌐 Latest Deployment - Base Mainnet
+
+The protocol is currently deployed and verified on **Base Mainnet** with all contracts active and handling swaps with fees.
+
+### Deployed Contracts
+
+| Contract | Address | BaseScan Link | Status |
+|----------|---------|---------------|---------|
+| **NFTStrategyFactory** | `0xb35de559B8dF1237bc9324e4eD57e586F37d4bED` | [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code) | ✅ Verified |
+| **NFTStrategyHook** | `0xe6951fD58448c11b937c2cd823f6240a068B68c4` | [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code) | ✅ Verified |
+| **NFTStrategy (RARITY Token)** | `0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A` | [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code) | ✅ Verified |
+| **FeeContract** | `0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3` | [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract) | ✅ Verified |
+| **NFTStrategyHookMiner** | `0x25a4BA1D9B9018c954C82463348d20aC981C0217` | [View on BaseScan](https://basescan.org/address/0x25a4BA1D9B9018c954C82463348d20aC981C0217#code) | ✅ Verified |
+| **OpenSeaNFTBuyer** | `0x69bC1a1DeAC31D425EF5707864490273e4378492` | [View on BaseScan](https://basescan.org/address/0x69bC1a1DeAC31D425EF5707864490273e4378492#code) | ✅ Verified |
+| **RestrictedToken** | `0xc7B391b5B2bE18606a3023535062fD59be096Bdc` | [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code) | ✅ Verified |
+
+### Network Information
+
+- **Network**: Base Mainnet
+- **Chain ID**: 8453
+- **Status**: ✅ All contracts verified and operational
+- **Fee System**: ✅ Active (15% flat fee on all swaps)
+- **Swap Status**: ✅ Swaps working with fees collected
+
+### Uniswap V4 Integration on Base
+
+The protocol is fully integrated with Uniswap V4 on Base Mainnet. Users can swap ETH for RARITY tokens directly through Uniswap's interface, with the hook automatically collecting and distributing fees.
+
+![Uniswap V4 Swap Interface](Screenshot 2025-11-12 010646.png)
+
+*Example swap interface showing RARITY token (RT) trading on Uniswap V4 with fee collection (15% fee shown in the transaction details)*
+
+### Quick Links
+
+- **Factory Contract**: [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code)
+- **Hook Contract**: [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code)
+- **RARITY Token**: [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code)
+- **FeeContract**: [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract)
+- **RestrictedToken**: [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code)
+
 ## 🏗️ Architecture Overview
 
 ### Protocol Components
