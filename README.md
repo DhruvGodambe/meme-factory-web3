@@ -53,6 +53,7 @@ graph TD
     A[NFTStrategyFactory] --> B[NFTStrategyHook]
     B --> C[FeeContract]
     C --> D[NFT Collection]
+    C --> I[OpenSea Collection]
     B --> E[RestrictedToken]
     F[NFTStrategyHookMiner] --> B
     A --> G[NFTStrategy/RARITY Token]
@@ -143,7 +144,7 @@ graph TD
 
 ### NFTStrategyHook
 
-**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallet.
+**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallet and also act as factory for the FeeContract and deploys them mapped to the Token Strategy Contract
 
 **Key Features**:
 - **Flat Fee**: 15% on all swaps (buy and sell)
