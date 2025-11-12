@@ -10,15 +10,22 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 
 ### Deployed Contracts
 
-| Contract | Address | BaseScan Link | Status |
-|----------|---------|---------------|---------|
-| **NFTStrategyFactory** | `0xb35de559B8dF1237bc9324e4eD57e586F37d4bED` | [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code) | ✅ Verified |
-| **NFTStrategyHook** | `0xe6951fD58448c11b937c2cd823f6240a068B68c4` | [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code) | ✅ Verified |
-| **NFTStrategy (RARITY Token)** | `0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A` | [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code) | ✅ Verified |
-| **FeeContract** | `0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3` | [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract) | ✅ Verified |
-| **NFTStrategyHookMiner** | `0x25a4BA1D9B9018c954C82463348d20aC981C0217` | [View on BaseScan](https://basescan.org/address/0x25a4BA1D9B9018c954C82463348d20aC981C0217#code) | ✅ Verified |
-| **OpenSeaNFTBuyer** | `0x69bC1a1DeAC31D425EF5707864490273e4378492` | [View on BaseScan](https://basescan.org/address/0x69bC1a1DeAC31D425EF5707864490273e4378492#code) | ✅ Verified |
-| **RestrictedToken** | `0xc7B391b5B2bE18606a3023535062fD59be096Bdc` | [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code) | ✅ Verified |
+**Core Protocol Contracts (In Scope for Audit):**
+
+| Contract | Address | BaseScan Link | Status | Audit Scope |
+|----------|---------|---------------|---------|-------------|
+| **NFTStrategyFactory** | `0xb35de559B8dF1237bc9324e4eD57e586F37d4bED` | [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHook** | `0xe6951fD58448c11b937c2cd823f6240a068B68c4` | [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategy (RARITY Token)** | `0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A` | [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code) | ✅ Verified | ✅ In Scope |
+| **FeeContract** | `0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3` | [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHookMiner** | `0x25a4BA1D9B9018c954C82463348d20aC981C0217` | [View on BaseScan](https://basescan.org/address/0x25a4BA1D9B9018c954C82463348d20aC981C0217#code) | ✅ Verified | ✅ In Scope |
+
+**Supporting Contracts (Out of Scope for Audit):**
+
+| Contract | Address | BaseScan Link | Status | Audit Scope |
+|----------|---------|---------------|---------|-------------|
+| **OpenSeaNFTBuyer** | `0x69bC1a1DeAC31D425EF5707864490273e4378492` | [View on BaseScan](https://basescan.org/address/0x69bC1a1DeAC31D425EF5707864490273e4378492#code) | ✅ Verified | ⚠️ Out of Scope (Library) |
+| **RestrictedToken** | `0xc7B391b5B2bE18606a3023535062fD59be096Bdc` | [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code) | ✅ Verified | ⚠️ Out of Scope (Separate Deployment) |
 
 ### Network Information
 
@@ -62,17 +69,76 @@ graph TD
 
 ### Contract Relationships
 
+**Core Protocol Contracts (In Scope for Audit):**
 1. **NFTStrategyFactory**: Main factory contract that deploys and manages RARITY tokens
-2. **NFTStrategyHook**: Uniswap V4 hook that enforces fees and manages fee distribution
+2. **NFTStrategyHook**: Uniswap V4 hook that enforces fees, manages fee distribution, and acts as factory for FeeContract deployment
 3. **NFTStrategy (RARITY Token)**: ERC20 token representing a collection strategy
 4. **FeeContract**: Vault contract that holds NFTs, receives fees, and executes buyback/burn
-5. **RestrictedToken**: Base ERC20 with whitelist-based transfer restrictions
-6. **NFTStrategyHookMiner**: Utility for deterministic hook address mining via CREATE2
-7. **OpenSeaNFTBuyer**: Helper contract for purchasing NFTs from OpenSea via Seaport
+5. **NFTStrategyHookMiner**: Utility for deterministic hook address mining via CREATE2
 
-## 📦 Core Contracts
+**Supporting Contracts (Not In Scope for Audit):**
+- **RestrictedToken**: Base ERC20 with whitelist-based transfer restrictions (separate deployment)
+- **OpenSeaNFTBuyer/OpenSeaPort**: Library contract for OpenSea Seaport integration
+- **FakeNFTCollection**: Testing contract for protocol flow testing
+- **SimpleSeller**: Testing contract for NFT purchase flow testing
+- **Interfaces**: Interface definitions (IUniswapV4Router04, IAllowanceTransfer, IEIP712, ISignatureTransfer)
+
+## 🔍 Audit Scope
+
+### Contracts In Scope for Security Audit
+
+The following contracts are the core protocol contracts and are **in scope for security audit**:
+
+1. **NFTStrategyFactory** (`contracts/amock/NFTStrategyFactory.sol`)
+   - Main factory contract
+   - Handles token deployment and liquidity seeding
+   - Manages protocol configuration
+
+2. **NFTStrategyHook** (`contracts/amock/NFTStrategyHook.sol`)
+   - Uniswap V4 hook implementation
+   - Fee collection and distribution
+   - FeeContract factory and management
+
+3. **NFTStrategy** (`contracts/amock/NFTStrategy.sol`)
+   - RARITY token implementation
+   - Transfer restrictions and mid-swap protection
+
+4. **FeeContract** (`contracts/amock/FeeContract.sol`)
+   - NFT vault contract
+   - Fee accumulation and NFT trading
+   - TWAP buyback operations
+
+5. **NFTStrategyHookMiner** (`contracts/NFTStrategyHookMiner.sol`)
+   - Hook address mining utility
+   - CREATE2 deployment helper
+
+### Contracts Out of Scope
+
+The following contracts are **not in scope for security audit** as they are testing utilities, library functions, or interface definitions:
+
+**Testing Contracts:**
+- `FakeNFTCollection.sol` - Test NFT collection for protocol testing
+- `SimpleSeller.sol` - Test contract for NFT purchase flow testing
+
+**Library/Helper Contracts:**
+- `OpenSeaPort.sol` / `OpenSeaNFTBuyer` - OpenSea Seaport integration library
+- These are external integrations and helper functions
+
+**Interface Contracts:**
+- `Interfaces.sol` - Interface definitions
+- `IUniswapV4Router04.sol` - Uniswap V4 router interface
+- `IAllowanceTransfer.sol` - Permit2 allowance transfer interface
+- `IEIP712.sol` - EIP-712 interface
+- `ISignatureTransfer.sol` - Permit2 signature transfer interface
+
+**External Contracts:**
+- `RestrictedToken.sol` - Deployed separately, not part of core protocol audit scope
+
+## 📦 Core Contracts (In Scope for Audit)
 
 ### NFTStrategyFactory
+
+**Status**: ✅ **In Scope for Audit**
 
 **Role**: Deploys RARITY tokens, manages protocol configuration, seeds liquidity, and handles TWAP operations.
 
@@ -114,6 +180,8 @@ graph TD
 
 ### NFTStrategy (RARITY Token)
 
+**Status**: ✅ **In Scope for Audit**
+
 **Role**: ERC20 token representing an NFT collection strategy. Non-transferable between EOAs, but tradeable via Uniswap V4 DEX.
 
 **Key Features**:
@@ -144,7 +212,9 @@ graph TD
 
 ### NFTStrategyHook
 
-**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallet and also act as factory for the FeeContract and deploys them mapped to the Token Strategy Contract
+**Status**: ✅ **In Scope for Audit**
+
+**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallet. Also acts as factory for FeeContract deployment, deploying them mapped to Token Strategy Contracts.
 
 **Key Features**:
 - **Flat Fee**: 15% on all swaps (buy and sell)
@@ -202,6 +272,8 @@ graph TD
   - `getCollectionFromFeeContract(feeContractAddress)`: Get associated collection
 
 ### FeeContract (Vault)
+
+**Status**: ✅ **In Scope for Audit**
 
 **Role**: Vault that holds NFTs (max 5), receives ETH fees, purchases NFTs from multiple sources, lists NFTs with markup, and executes TWAP buyback-and-burn.
 
@@ -264,42 +336,9 @@ graph TD
 - `setPriceMultiplier(uint256)`: Factory can update markup (1100-10000 range)
 - `emergencyWithdraw()`: Factory owner can withdraw ETH (emergency only)
 
-### RestrictedToken
-
-**Role**: Base ERC20 token with whitelist-based transfer restrictions compatible with Uniswap V4 routing architecture.
-
-**Key Features**:
-- **Whitelist System**: Transfers allowed if either sender or receiver is whitelisted
-- **Router Compatibility**: Supports Uniswap V4 flow (User → Router → PoolManager → User)
-- **Mid-Swap Protection**: Prevents unauthorized transfers during swaps
-- **Trading Control**: Can enable/disable trading, toggle restrictions
-- **Pool Manager Integration**: Whitelists PoolManager, Hook, and Router addresses
-
-**Transfer Logic**:
-- Transfers allowed if either `from` or `to` is whitelisted
-- Supports v4 flow: User → Router → PoolManager → User → Hook/Treasury
-- Mid-swap flag restricts transfers during swap operations
-- Owner and core protocol addresses whitelisted by default
-
-**State Variables**:
-- `poolManager`: Uniswap V4 PoolManager address
-- `authorizedHook`: NFTStrategyHook address
-- `swapRouter`: Universal Router or V4Router address
-- `tradingEnabled`: Whether trading is enabled
-- `restrictionActive`: Whether restrictions are active
-- `midSwap`: Flag for mid-swap state
-- `isWhitelisted`: Mapping of whitelisted addresses
-
-**Key Functions**:
-- `setPoolManager(address)`: Set PoolManager address
-- `setHook(address)`: Set authorized hook address
-- `setSwapRouter(address)`: Set swap router address
-- `setWhitelist(address, bool)`: Add/remove addresses from whitelist
-- `setTradingEnabled(bool)`: Enable/disable trading
-- `setRestrictionActive(bool)`: Toggle restriction system
-- `checkWhitelist(address)`: Check if address is whitelisted
-
 ### NFTStrategyHookMiner
+
+**Status**: ✅ **In Scope for Audit**
 
 **Role**: Utility contract for deterministic hook address mining using CREATE2 and salt computation.
 
@@ -316,21 +355,36 @@ graph TD
 - `getMinedData()`: Returns stored hook address and salt
 - `getHookPermissions()`: Returns required permissions structure
 
-### OpenSeaNFTBuyer
+## 📚 Supporting Contracts (Out of Scope for Audit)
+
+The following contracts are used by the protocol but are **not in scope for security audit**:
+
+### RestrictedToken
+
+**Status**: ⚠️ **Out of Scope** (Deployed separately)
+
+**Role**: Base ERC20 token with whitelist-based transfer restrictions compatible with Uniswap V4 routing architecture.
+
+**Note**: This contract is deployed separately and used for TWAP buyback operations. It is not part of the core protocol audit scope.
+
+**Key Features**:
+- **Whitelist System**: Transfers allowed if either sender or receiver is whitelisted
+- **Router Compatibility**: Supports Uniswap V4 flow (User → Router → PoolManager → User)
+- **Mid-Swap Protection**: Prevents unauthorized transfers during swaps
+- **Trading Control**: Can enable/disable trading, toggle restrictions
+
+### OpenSeaNFTBuyer / OpenSeaPort
+
+**Status**: ⚠️ **Out of Scope** (Library/Helper Contract)
 
 **Role**: Helper contract for purchasing NFTs from OpenSea marketplace via Seaport protocol.
+
+**Note**: This is a library/helper contract for OpenSea Seaport integration. It is used by FeeContract for smart buying but is not part of the core protocol audit scope.
 
 **Key Features**:
 - **Seaport Integration**: Interacts with Seaport 1.6 on Base network
 - **Order Fulfillment**: Fulfills OpenSea orders with ETH payment
 - **Multiple Order Types**: Supports full orders, advanced orders, and basic orders
-- **Chain Verification**: Verifies execution on correct network (Base)
-
-**Key Functions**:
-- `buyNFT(Order)`: Fulfill full Seaport order
-- `buyNFTAdvanced(AdvancedOrder, CriteriaResolver[], recipient)`: Fulfill advanced order
-- `buyNFTBasic(BasicOrderParameters)`: Fulfill basic order (gas efficient)
-- `checkOrderStatus(orderHash)`: Check order validity and fill status
 
 ## 🔄 System Workflow
 
@@ -655,20 +709,17 @@ For direct purchases from arbitrary sources (not covered by smart buy):
 - `NFTSoldByProtocol(tokenId, price, buyer)`: Emitted when NFT is sold
 - `BuybackAndBurn(ethAmount, rarityBurned)`: Emitted on TWAP execution
 
-### RestrictedToken Events
+## 🧪 Testing Contracts (Out of Scope for Audit)
 
-- `TradingEnabled(bool status)`: Emitted when trading is enabled/disabled
-- `RestrictionToggled(bool active)`: Emitted when restrictions are toggled
-- `PoolManagerSet(address indexed poolManager)`: Emitted when PoolManager is set
-- `HookSet(address indexed hook)`: Emitted when hook is set
-- `SwapRouterSet(address indexed router)`: Emitted when router is set
-- `WhitelistUpdated(address indexed account, bool status)`: Emitted when whitelist is updated
-
-## 🧪 Testing Contracts
+The following contracts are **testing utilities** used for protocol flow testing and are **not in scope for security audit**:
 
 ### FakeNFTCollection
 
+**Status**: ⚠️ **Out of Scope** (Testing Contract)
+
 **Role**: Test ERC721 collection with built-in marketplace functionality.
+
+**Note**: This is a testing contract used for protocol flow testing. It simulates an NFT collection with marketplace functionality for testing purposes.
 
 **Features**:
 - **Pre-minting**: 10 NFTs pre-minted to deployer
@@ -684,7 +735,11 @@ For direct purchases from arbitrary sources (not covered by smart buy):
 
 ### SimpleSeller
 
+**Status**: ⚠️ **Out of Scope** (Testing Contract)
+
 **Role**: Minimal seller contract for testing NFT purchases.
+
+**Note**: This is a testing contract used for NFT purchase flow testing. It is not part of the core protocol audit scope.
 
 **Features**:
 - **Fixed Price**: Pre-configured price for specific token
@@ -868,13 +923,24 @@ await feeContract.processTokenTwap();
 
 ### Contract Locations
 
-- **Factory**: `contracts/amock/NFTStrategyFactory.sol`
-- **Hook**: `contracts/amock/NFTStrategyHook.sol`
-- **RARITY Token**: `contracts/amock/NFTStrategy.sol`
-- **Vault**: `contracts/amock/FeeContract.sol`
-- **RestrictedToken**: `contracts/RestrictedToken.sol`
-- **Miner**: `contracts/NFTStrategyHookMiner.sol`
-- **OpenSea Buyer**: `contracts/amock/OpenSeaPort.sol`
+**Core Contracts (In Scope for Audit):**
+- **Factory**: `contracts/amock/NFTStrategyFactory.sol` ✅
+- **Hook**: `contracts/amock/NFTStrategyHook.sol` ✅
+- **RARITY Token**: `contracts/amock/NFTStrategy.sol` ✅
+- **Vault**: `contracts/amock/FeeContract.sol` ✅
+- **Miner**: `contracts/NFTStrategyHookMiner.sol` ✅
+
+**Supporting Contracts (Out of Scope):**
+- **RestrictedToken**: `contracts/RestrictedToken.sol` ⚠️ (Deployed separately)
+- **OpenSea Buyer**: `contracts/amock/OpenSeaPort.sol` ⚠️ (Library/Helper)
+- **Testing Contracts**: `contracts/amock/FakeNFTCollection.sol`, `contracts/amock/SimpleSeller.sol` ⚠️ (Testing)
+
+**Interface Contracts (Out of Scope):**
+- **Interfaces**: `contracts/amock/Interfaces.sol` ⚠️ (Interface definitions)
+- **IUniswapV4Router04**: `contracts/amock/IUniswapV4Router04.sol` ⚠️ (Interface)
+- **IAllowanceTransfer**: `contracts/amock/IAllowanceTransfer.sol` ⚠️ (Interface)
+- **IEIP712**: `contracts/amock/IEIP712.sol` ⚠️ (Interface)
+- **ISignatureTransfer**: `contracts/amock/ISignatureTransfer.sol` ⚠️ (Interface)
 
 ### Key Interfaces
 
@@ -885,6 +951,8 @@ await feeContract.processTokenTwap();
 - **INFTStrategyHook**: Hook interface
 - **ICollectionWithListings**: Collection marketplace interface
 - **IOpenSeaNFTBuyer**: OpenSea buyer interface
+
+> **Note**: Interface contracts are definitions only and are not auditable code. They are used for type checking and integration purposes.
 
 ---
 
