@@ -14,18 +14,18 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 
 | Contract | Address | BaseScan Link | Status | Audit Scope |
 |----------|---------|---------------|---------|-------------|
-| **NFTStrategyFactory** | `0xb35de559B8dF1237bc9324e4eD57e586F37d4bED` | [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHook** | `0xe6951fD58448c11b937c2cd823f6240a068B68c4` | [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategy (RARITY Token)** | `0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A` | [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code) | ✅ Verified | ✅ In Scope |
-| **FeeContract** | `0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3` | [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHookMiner** | `0x25a4BA1D9B9018c954C82463348d20aC981C0217` | [View on BaseScan](https://basescan.org/address/0x25a4BA1D9B9018c954C82463348d20aC981C0217#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyFactory** | `0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039` | [View on BaseScan](https://basescan.org/address/0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHook** | `0x0B7e30C74cE52CBa10c91357655955006C9a68c4` | [View on BaseScan](https://basescan.org/address/0x0B7e30C74cE52CBa10c91357655955006C9a68c4#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategy (RARITY Token)** | `0xefd37af75982b8462c4589b9e820fca1bcaa8d86` | [View on BaseScan](https://basescan.org/address/0xefd37af75982b8462c4589b9e820fca1bcaa8d86#code) | ✅ Verified | ✅ In Scope |
+| **FeeContract** | `0x7f0025865005bc1593ac052e7d687c3ee4b72ad9` | [View on BaseScan](https://basescan.org/address/0x7f0025865005bc1593ac052e7d687c3ee4b72ad9#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHookMiner** | `0x1AF607dE9cdB08d57EdC0E1337B1E3ef43b43453` | [View on BaseScan](https://basescan.org/address/0x1AF607dE9cdB08d57EdC0E1337B1E3ef43b43453#code) | ✅ Verified | ✅ In Scope |
 
 **Supporting Contracts (Out of Scope for Audit):**
 
 | Contract | Address | BaseScan Link | Status | Audit Scope |
 |----------|---------|---------------|---------|-------------|
-| **OpenSeaNFTBuyer** | `0x69bC1a1DeAC31D425EF5707864490273e4378492` | [View on BaseScan](https://basescan.org/address/0x69bC1a1DeAC31D425EF5707864490273e4378492#code) | ✅ Verified | ⚠️ Out of Scope (Library) |
-| **RestrictedToken** | `0xc7B391b5B2bE18606a3023535062fD59be096Bdc` | [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code) | ✅ Verified | ⚠️ Out of Scope (Separate Deployment) |
+| **OpenSeaNFTBuyer** | `0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c` | [View on BaseScan](https://basescan.org/address/0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c#code) | ✅ Verified | ⚠️ Out of Scope (Library) |
+| **RestrictedToken** | `0x11bd3952C622D69551DcE28b5b9769CA39c88dBc` | [View on BaseScan](https://basescan.org/address/0x11bd3952C622D69551DcE28b5b9769CA39c88dBc#code) | ✅ Verified | ⚠️ Out of Scope (Separate Deployment) |
 
 ### Network Information
 
@@ -45,11 +45,11 @@ The protocol is fully integrated with Uniswap V4 on Base Mainnet. Users can swap
 
 ### Quick Links
 
-- **Factory Contract**: [View on BaseScan](https://basescan.org/address/0xb35de559B8dF1237bc9324e4eD57e586F37d4bED#code)
-- **Hook Contract**: [View on BaseScan](https://basescan.org/address/0xe6951fD58448c11b937c2cd823f6240a068B68c4#code)
-- **RARITY Token**: [View on BaseScan](https://basescan.org/address/0x908dd2FbbbA92A5EAAeab5D8182e7269ae39461A#code)
-- **FeeContract**: [View on BaseScan](https://basescan.org/address/0x38ecdfabec59d12f3bdd120b36d4f0d6fc295fe3#readContract)
-- **RestrictedToken**: [View on BaseScan](https://basescan.org/address/0xc7B391b5B2bE18606a3023535062fD59be096Bdc#code)
+- **Factory Contract**: [View on BaseScan](https://basescan.org/address/0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039#code)
+- **Hook Contract**: [View on BaseScan](https://basescan.org/address/0x0B7e30C74cE52CBa10c91357655955006C9a68c4#code)
+- **RARITY Token**: [View on BaseScan](https://basescan.org/address/0xefd37af75982b8462c4589b9e820fca1bcaa8d86#code)
+- **FeeContract**: [View on BaseScan](https://basescan.org/address/0x7f0025865005bc1593ac052e7d687c3ee4b72ad9#code)
+- **RestrictedToken**: [View on BaseScan](https://basescan.org/address/0x11bd3952C622D69551DcE28b5b9769CA39c88dBc#code)
 
 ## 🏗️ Architecture Overview
 
@@ -214,11 +214,11 @@ The following contracts are **not in scope for security audit** as they are test
 
 **Status**: ✅ **In Scope for Audit**
 
-**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallet. Also acts as factory for FeeContract deployment, deploying them mapped to Token Strategy Contracts.
+**Role**: Uniswap V4 hook that enforces 15% flat fee on all swaps, converts fees to ETH, and distributes to FeeContract and founder wallets. Also acts as factory for FeeContract deployment, deploying them mapped to Token Strategy Contracts.
 
 **Key Features**:
 - **Flat Fee**: 15% on all swaps (buy and sell)
-- **Fee Distribution**: 14% to active FeeContract, 1% to founder wallet
+- **Fee Distribution**: 14% to active FeeContract, 0.25% to founder wallet 1, 0.75% to founder wallet 2
 - **Fee Conversion**: Automatically swaps non-ETH fees to ETH
 - **Mid-Swap Protection**: Sets `midSwap` flag on RARITY tokens during swaps
 - **Liquidity Gating**: Only allows liquidity operations during `loadingLiquidity`
@@ -236,17 +236,21 @@ The following contracts are **not in scope for security audit** as they are test
 1. Hook calculates 15% fee from swap amount
 2. Hook takes fee from pool manager
 3. If fee is not in ETH, hook swaps fee token to ETH
-4. Hook splits fee: 14% to active FeeContract, 1% to founder
-5. If no FeeContract exists, entire 15% goes to founder
+4. Hook splits fee: 14% to active FeeContract, 0.25% to founder wallet 1, 0.75% to founder wallet 2
+5. If no FeeContract exists, vault portion (14%) is split proportionally: 3.5% to wallet 1, 10.5% to wallet 2 (total 15%: 3.75% + 11.25%)
 6. Hook emits `HookFee` event with fee details
 
 **State Variables**:
 - `FLAT_FEE`: 1500 (15% in basis points)
 - `VAULT_FEE_PORTION`: 1400 (14% to vault)
-- `FOUNDER_FEE_PORTION`: 100 (1% to founder)
+- `FOUNDER_FEE_PORTION_1`: 25 (0.25% to founder wallet 1)
+- `FOUNDER_FEE_PORTION_2`: 75 (0.75% to founder wallet 2)
+- `FOUNDER_FEE_PORTION`: 100 (1% total, kept for compatibility)
 - `activeFeeContract`: Mapping from RARITY token to active FeeContract
 - `feeContractToRarityToken`: Reverse mapping from FeeContract to RARITY token
-- `founderWallet`: Address receiving founder fees
+- `founderWallet1`: Address receiving 0.25% founder fees
+- `founderWallet2`: Address receiving 0.75% founder fees
+- `founderWallet`: Legacy address (kept for compatibility)
 - `hotWallet`: Authorized address for getter functions
 - `authorizedCallers`: Mapping of authorized addresses for getter access
 - `routerAddress`: Address of Uniswap V4 router
@@ -254,7 +258,7 @@ The following contracts are **not in scope for security audit** as they are test
 
 **Key Functions**:
 - `calculateFee(collection, isBuying)`: Returns 15% flat fee (0% if deployer buying)
-- `_processFees(rarityToken, feeAmount)`: Distributes fees to vault and founder
+- `_processFees(rarityToken, feeAmount)`: Distributes fees to vault (14%) and founder wallets (0.25% to wallet 1, 0.75% to wallet 2)
 - `_swapToEth(key, amount)`: Converts non-ETH fees to ETH
 - `deployNewFeeContract(rarityToken)`: Manually deploy new FeeContract
 - `forceRotateFeeContract(rarityToken)`: Force create new FeeContract (replaces current)
@@ -419,7 +423,8 @@ The following contracts are used by the protocol but are **not in scope for secu
    - Calculates 15% fee from swap amount
    - Takes fee from pool manager
    - If fee is not ETH, swaps fee token to ETH
-   - Splits fee: 14% to active FeeContract, 1% to founder
+   - Splits fee: 14% to active FeeContract, 0.25% to founder wallet 1, 0.75% to founder wallet 2
+   - If no FeeContract exists, vault portion (14%) is split proportionally to founder wallets
    - Sets `midSwap = false` on RARITY token
    - Emits `HookFee` and `Trade` events
 
@@ -429,8 +434,10 @@ The following contracts are used by the protocol but are **not in scope for secu
 2. **Fee Conversion**: If fee is not ETH, hook swaps to ETH via internal swap
 3. **Fee Distribution**:
    - 14% sent to active FeeContract via `addFees()` (if exists)
-   - 1% sent to founder wallet (or fee address if no founder set)
-   - If no FeeContract exists, entire 15% goes to founder
+   - 0.25% sent to founder wallet 1 (or fee address if claimed by owner)
+   - 0.75% sent to founder wallet 2
+   - If no FeeContract exists, vault portion (14%) is split proportionally: 3.5% to wallet 1, 10.5% to wallet 2
+   - Total distribution when no FeeContract: 3.75% to wallet 1, 11.25% to wallet 2
 4. **Vault Accumulation**: FeeContract accumulates ETH in `currentFees`
 
 > **Note**: For detailed information on FeeContract fee collection, deployment, and rotation, see [Section 4: FeeContract Deployment and Management Flow](#4-feecontract-deployment-and-management-flow).
@@ -462,15 +469,17 @@ The following contracts are used by the protocol but are **not in scope for secu
 1. **Swap Occurs**: User swaps ETH for RARITY tokens (or vice versa) on Uniswap V4
 2. **Fee Calculation**: Hook calculates 15% fee from swap amount
 3. **Fee Distribution**: Hook's `_processFees()` function:
-   - Calculates 14% vault portion and 1% founder portion
+   - Calculates 14% vault portion, 0.25% founder portion 1, and 0.75% founder portion 2
    - Checks if active FeeContract exists for RARITY token
    - If FeeContract exists:
      - Calls `activeFeeContract.addFees{value: vaultAmount}()`
      - FeeContract receives ETH and increments `currentFees`
+     - 0.25% sent to founder wallet 1 (or fee address if claimed by owner)
+     - 0.75% sent to founder wallet 2
      - Emits `FeesAdded` event
    - If no FeeContract exists:
-     - Entire 15% goes to founder wallet
-   - 1% always goes to founder wallet (or fee address)
+     - Vault portion (14%) is split proportionally: 25% to wallet 1 (3.5%), 75% to wallet 2 (10.5%)
+     - Total distribution: 3.75% to wallet 1 (0.25% + 3.5%), 11.25% to wallet 2 (0.75% + 10.5%)
 4. **Fee Accumulation**: FeeContract accumulates ETH in `currentFees` state variable
 5. **Usage**: Accumulated fees can be used for:
    - NFT purchases via `smartBuyNFT()` or `buyTargetNFT()`
@@ -640,7 +649,10 @@ For direct purchases from arbitrary sources (not covered by smart buy):
 
 - **Flat Fee**: 15% on all swaps (buy and sell)
 - **Vault Fee**: 14% to active FeeContract
-- **Founder Fee**: 1% to founder wallet
+- **Founder Fee 1**: 0.25% to founder wallet 1
+- **Founder Fee 2**: 0.75% to founder wallet 2
+- **Total Founder Fee**: 1% (split between two wallets)
+- **Fallback Distribution** (when no FeeContract): 3.75% to wallet 1, 11.25% to wallet 2 (vault portion split proportionally)
 - **TWAP Reward**: 0.5% to TWAP caller
 - **Price Markup**: 20% (1.2x multiplier) for NFT resale
 
@@ -839,7 +851,11 @@ await feeContract.processTokenTwap();
 
 - `setRouterAddress(routerAddress)`: Set Uniswap V4 router address
 - `setOpenSeaBuyer(openSeaBuyerAddress)`: Set OpenSea buyer contract
-- `setFounderWallet(founderWallet)`: Set founder wallet address
+- `setFounderWallet1(founderWallet1)`: Set founder wallet 1 address (0.25% recipient)
+- `setFounderWallet2(founderWallet2)`: Set founder wallet 2 address (0.75% recipient)
+- `getFounderWallet1()`: Get founder wallet 1 address
+- `getFounderWallet2()`: Get founder wallet 2 address
+- `setFounderWallet(founderWallet)`: Set legacy founder wallet address (kept for compatibility)
 - `setHotWallet(hotWallet)`: Set hot wallet address
 - `setAuthorizedCaller(caller, authorized)`: Add/remove authorized callers
 - `deployNewFeeContract(rarityToken)`: Deploy new FeeContract
@@ -893,7 +909,7 @@ await feeContract.processTokenTwap();
 
 - **Rationale**: Simple, predictable fee structure
 - **Implementation**: 15% flat fee on all swaps
-- **Distribution**: 14% to vault, 1% to founder
+- **Distribution**: 14% to vault, 0.25% to founder wallet 1, 0.75% to founder wallet 2
 
 ### Manual FeeContract Management
 

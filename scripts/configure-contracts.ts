@@ -12,9 +12,9 @@ async function main() {
   const UNIVERSAL_ROUTER = "0x6ff5693b99212da76ad316178a184ab56d299b43";
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
 
-  const factoryAddress = "0xb35de559B8dF1237bc9324e4eD57e586F37d4bED";
-  const restrictedTokenAddress = "0xc7B391b5B2bE18606a3023535062fD59be096Bdc";
-  const actualHookAddr = "0xe6951fD58448c11b937c2cd823f6240a068B68c4";
+  const factoryAddress = "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039";
+  const restrictedTokenAddress = "0x11bd3952C622D69551DcE28b5b9769CA39c88dBc";
+  const actualHookAddr = "0x0B7e30C74cE52CBa10c91357655955006C9a68c4";
 
   const feeData = await ethers.provider.getFeeData();
   const baseFee = feeData.maxFeePerGas ?? BigInt(10_000_000_000);

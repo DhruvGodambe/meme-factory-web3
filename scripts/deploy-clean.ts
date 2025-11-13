@@ -237,6 +237,39 @@ for (const txPromise of tokenTxs) {
   await new Promise(res => setTimeout(res, 2000)); // slight delay
 }
 console.log("✅ RestrictedToken fully configured");
+
+  // --- STEP 8: Configure Hook (Optional) ---
+  console.log("\n=== ⚙️ Configuring Hook (Optional) ===");
+  const hook = await ethers.getContractAt("NFTStrategyHook", actualHookAddr);
+  
+  // Optional: Set router address for FeeContract deployments
+  try {
+    const setRouterTx = await hook.setRouterAddress(ROUTER, highGas);
+    await setRouterTx.wait();
+    console.log("✅ Router address set in hook");
+    await safeDelay();
+  } catch (err: any) {
+    console.log("⚠️ Could not set router address:", err.message);
+  }
+
+  // Optional: Set OpenSea buyer address
+  try {
+    const setOpenSeaTx = await hook.setOpenSeaBuyer(openSeaBuyerAddress, highGas);
+    await setOpenSeaTx.wait();
+    console.log("✅ OpenSea buyer address set in hook");
+    await safeDelay();
+  } catch (err: any) {
+    console.log("⚠️ Could not set OpenSea buyer:", err.message);
+  }
+
+  // Note: Both founderWallet1 and founderWallet2 are already set to FEE_ADDRESS (deployer.address) in constructor
+  // If you want to set different addresses, uncomment and modify:
+  // const FOUNDER_WALLET_1 = "0x..."; // 0.25% recipient
+  // const FOUNDER_WALLET_2 = "0x..."; // 0.75% recipient
+  // await hook.setFounderWallet1(FOUNDER_WALLET_1, highGas);
+  // await hook.setFounderWallet2(FOUNDER_WALLET_2, highGas);
+  // console.log("✅ Founder wallets configured");
+
   // --- Save deployment ---
   const deployment = {
     network: networkName,

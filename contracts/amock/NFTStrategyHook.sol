@@ -34,7 +34,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     uint128 private constant TOTAL_BIPS = 10000;
     uint128 private constant FLAT_FEE = 1500; // 15% flat fee
     uint128 private constant VAULT_FEE_PORTION = 1400; // 14% to vault
-    uint128 private constant FOUNDER_FEE_PORTION = 100; // 1% to founder
+    uint128 private constant FOUNDER_FEE_PORTION_1 = 25; // 0.25% to founder wallet 1
+    uint128 private constant FOUNDER_FEE_PORTION_2 = 75; // 0.75% to founder wallet 2
+    uint128 private constant FOUNDER_FEE_PORTION = 100; // 1% total founder fee (kept for compatibility)
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
@@ -46,7 +48,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     // New state for Rarity Town Protocol
     mapping(address => address) public activeFeeContract; // rarityToken => FeeContract
     mapping(address => address) public feeContractToRarityToken; // FeeContract => rarityToken
-    address public founderWallet;
+    address public founderWallet; // Legacy - kept for compatibility
+    address public founderWallet1; // 0.25% recipient
+    address public founderWallet2; // 0.75% recipient
     address public brandAssetToken;
     address public brandAssetHook;
     bool public brandAssetEnabled;
@@ -88,7 +92,9 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         restrictedToken = _restrictedToken;
         nftStrategyFactory = _nftStrategyFactory;
         feeAddress = _feeAddress;
-        founderWallet = _feeAddress; // Initialize founder wallet to fee address
+        founderWallet = _feeAddress; // Initialize founder wallet to fee address (legacy)
+        founderWallet1 = _feeAddress; // Initialize founder wallet 1 to fee address (owner)
+        founderWallet2 = _feeAddress; // Initialize founder wallet 2 to fee address (owner)
         
         // Initialize authorized callers
         authorizedCallers[_feeAddress] = true; // Admin is authorized
@@ -135,6 +141,32 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     function setFounderWallet(address _founderWallet) external {
         if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
         founderWallet = _founderWallet;
+    }
+
+    /// @notice Set founder wallet 1 address (0.25% recipient)
+    /// @param _founderWallet1 The new founder wallet 1 address
+    function setFounderWallet1(address _founderWallet1) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        founderWallet1 = _founderWallet1;
+    }
+
+    /// @notice Set founder wallet 2 address (0.75% recipient)
+    /// @param _founderWallet2 The new founder wallet 2 address
+    function setFounderWallet2(address _founderWallet2) external {
+        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+        founderWallet2 = _founderWallet2;
+    }
+
+    /// @notice Get founder wallet 1 address
+    /// @return The address of founder wallet 1 (0.25% recipient)
+    function getFounderWallet1() external view returns (address) {
+        return founderWallet1;
+    }
+
+    /// @notice Get founder wallet 2 address
+    /// @return The address of founder wallet 2 (0.75% recipient)
+    function getFounderWallet2() external view returns (address) {
+        return founderWallet2;
     }
 
     function setBrandAsset(address _brandAssetToken, address _brandAssetHook, bool _enabled) external {
@@ -423,9 +455,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         // Admin must manually rotate using forceRotateFeeContract()
         // rotateIfFull(rarityToken);  // ← COMMENTED OUT
         
-        // Calculate fee distribution: 14% to vault, 1% to founder
+        // Calculate fee distribution: 14% to vault, 0.25% to founder wallet 1, 0.75% to founder wallet 2
         uint256 vaultAmount = (feeAmount * VAULT_FEE_PORTION) / TOTAL_BIPS;
-        uint256 founderAmount = (feeAmount * FOUNDER_FEE_PORTION) / TOTAL_BIPS;
+        uint256 founderAmount1 = (feeAmount * FOUNDER_FEE_PORTION_1) / TOTAL_BIPS;
+        uint256 founderAmount2 = (feeAmount * FOUNDER_FEE_PORTION_2) / TOTAL_BIPS;
         
         // Send 14% to active FeeContract (if one exists)
         address activeVault = activeFeeContract[rarityToken];
@@ -433,22 +466,34 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             (bool success,) = activeVault.call{value: vaultAmount}(abi.encodeWithSignature("addFees()"));
             require(success, "Vault fee transfer failed");
         } else {
-            // If no FeeContract exists, send vault portion to founder as well
-            founderAmount += vaultAmount;
+            // If no FeeContract exists, send vault portion to founder wallets proportionally
+            // Split vault portion: 25% to wallet 1, 75% to wallet 2
+            founderAmount1 += (vaultAmount * FOUNDER_FEE_PORTION_1) / FOUNDER_FEE_PORTION;
+            founderAmount2 += (vaultAmount * FOUNDER_FEE_PORTION_2) / FOUNDER_FEE_PORTION;
         }
         
-        // Handle founder fee (includes vault portion if no FeeContract)
-        if (founderAmount > 0) {
+        // Handle founder fee 1 (0.25% or proportional share if no FeeContract)
+        if (founderAmount1 > 0) {
             if (brandAssetEnabled && brandAssetToken != address(0)) {
-                // Buy and burn brand asset
-                _buyAndBurnBrandAsset(founderAmount);
+                // Buy and burn brand asset with wallet 1 portion
+                _buyAndBurnBrandAsset(founderAmount1);
             } else {
-                // Send to the fee address set during launch (feeAddressClaimedByOwner)
-                // If not set, fallback to default feeAddress
+                // Send to founder wallet 1 (or feeAddressClaimedByOwner if set, but use wallet 1 as default)
                 address destination = feeAddressClaimedByOwner[rarityToken] != address(0) 
                     ? feeAddressClaimedByOwner[rarityToken] 
-                    : feeAddress;
-                SafeTransferLib.forceSafeTransferETH(destination, founderAmount);
+                    : founderWallet1;
+                SafeTransferLib.forceSafeTransferETH(destination, founderAmount1);
+            }
+        }
+        
+        // Handle founder fee 2 (0.75% or proportional share if no FeeContract)
+        if (founderAmount2 > 0) {
+            if (brandAssetEnabled && brandAssetToken != address(0)) {
+                // Buy and burn brand asset with wallet 2 portion
+                _buyAndBurnBrandAsset(founderAmount2);
+            } else {
+                // Send to founder wallet 2
+                SafeTransferLib.forceSafeTransferETH(founderWallet2, founderAmount2);
             }
         }
     }
