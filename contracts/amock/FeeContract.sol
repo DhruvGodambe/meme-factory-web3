@@ -9,45 +9,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import "./Interfaces.sol";
 
-// OpenSea Order Types (minimal subset needed)
-struct Order {
-    OrderParameters parameters;
-    bytes signature;
-}
-
-struct OrderParameters {
-    address offerer;
-    address zone;
-    OfferItem[] offer;
-    ConsiderationItem[] consideration;
-    uint8 orderType;
-    uint256 startTime;
-    uint256 endTime;
-    bytes32 zoneHash;
-    uint256 salt;
-    bytes32 conduitKey;
-    uint256 totalOriginalConsiderationItems;
-}
-
-struct OfferItem {
-    uint8 itemType;
-    address token;
-    uint256 identifierOrCriteria;
-    uint256 startAmount;
-    uint256 endAmount;
-}
-
-struct ConsiderationItem {
-    uint8 itemType;
-    address token;
-    uint256 identifierOrCriteria;
-    uint256 startAmount;
-    uint256 endAmount;
-    address payable recipient;
-}
-
 interface IOpenSeaNFTBuyer {
-    function buyNFT(Order calldata order) external payable;
+    function buyNFTBasic(BasicOrderParameters calldata parameters) external payable;
 }
 
 /// @title FeeContract - Vault for NFT trading and RARITY buyback/burn
@@ -71,6 +34,7 @@ contract FeeContract is ReentrancyGuard {
     uint256 public currentHoldings;
     uint256 public priceMultiplier = 1200;
     mapping(uint256 => uint256) public nftForSale;
+    uint256[] public heldTokenIds; // Array to track all tokenIds held by this contract
     uint256 public currentFees;
     uint256 public ethToTwap;
     uint256 public lastTwapBlock;
@@ -128,6 +92,11 @@ contract FeeContract is ReentrancyGuard {
         return currentHoldings >= MAX_NFTS;
     }
 
+    /// @notice Get all tokenIds held by this contract
+    function getHeldTokenIds() external view returns (uint256[] memory) {
+        return heldTokenIds;
+    }
+
     /*                  FEE FUNCTIONS                      */
 
     /// @notice Receive ETH fees from the hook
@@ -138,109 +107,59 @@ contract FeeContract is ReentrancyGuard {
 
     /*                 NFT TRADING FUNCTIONS               */
 
-    /// @notice Smart buy function that chooses between OpenSea, collection marketplace and previous FeeContract
+    /// @notice Smart buy function that chooses between OpenSea and previous FeeContract
     function smartBuyNFT(
-        uint256 tokenId,
         address previousFeeContract,
-        Order calldata openSeaOrder
+        BasicOrderParameters calldata openSeaOrder
     ) external nonReentrant {
+        if (previousFeeContract == address(0)) {
+            if (openSeaOrder.offerToken != address(collection)) revert InvalidCollection();
+            uint256 price = openSeaOrder.considerationAmount;
+            for (uint256 i = 0; i < openSeaOrder.additionalRecipients.length; i++) {
+                price += openSeaOrder.additionalRecipients[i].amount;
+            }
+            _executeOpenSeaPurchase(openSeaOrder, price);
+            return;
+        }
+
+        uint256 tokenId = openSeaOrder.offerIdentifier;
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
         if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
 
-        uint256 collectionPrice = 0;
-        uint256 feeContractPrice = 0;
-        uint256 openSeaPrice = 0;
-        bool availableOnCollection = false;
-        bool availableOnFeeContract = false;
+        uint256 feeContractFloorPrice = 0;
+        uint256 feeContractTokenId = 0;
+        uint256 openSeaPrice = type(uint256).max;
         bool availableOnOpenSea = false;
 
-        // Check OpenSea price
-        if (openSeaOrder.parameters.offer.length > 0) {
-            OfferItem memory nftItem = openSeaOrder.parameters.offer[0];
-            if (nftItem.token == address(collection) && nftItem.identifierOrCriteria == tokenId) {
-                // Price is usually in consideration items (what buyer pays)
-                if (openSeaOrder.parameters.consideration.length > 0) {
-                    openSeaPrice = openSeaOrder.parameters.consideration[0].startAmount;
-                    availableOnOpenSea = true;
-                }
+        if (openSeaOrder.offerToken == address(collection)) {
+            openSeaPrice = openSeaOrder.considerationAmount;
+            for (uint256 i = 0; i < openSeaOrder.additionalRecipients.length; i++) {
+                openSeaPrice += openSeaOrder.additionalRecipients[i].amount;
             }
+            availableOnOpenSea = true;
         }
 
-        // Check collection marketplace price
-        try ICollectionWithListings(address(collection)).listings(tokenId) returns (address seller, uint256 price) {
-            if (seller != address(0) && price > 0) {
-                collectionPrice = price;
-                availableOnCollection = true;
-            }
-        } catch {}
+        (feeContractFloorPrice, feeContractTokenId) = _getFloorPrice(previousFeeContract);
+        if (feeContractFloorPrice == 0 && !availableOnOpenSea) revert NFTNotForSale();
 
-        // Check previous FeeContract price
-        if (previousFeeContract != address(0)) {
-            try IFeeContract(previousFeeContract).nftForSale(tokenId) returns (uint256 price) {
-                if (price > 0) {
-                    // Verify the previous FeeContract actually owns the NFT
-                    if (collection.ownerOf(tokenId) == previousFeeContract) {
-                        feeContractPrice = price;
-                        availableOnFeeContract = true;
-                    }
-                }
-            } catch {}
-        }
-
-        if (!availableOnCollection && !availableOnFeeContract && !availableOnOpenSea) {
-            revert NFTNotForSale();
-        }
-
-        // Choose the cheapest option
-        uint256 purchasePrice = type(uint256).max;
-        uint8 buyFrom = 0; // 0: collection, 1: feeContract, 2: openSea
-
-        if (availableOnCollection && collectionPrice < purchasePrice) {
-            purchasePrice = collectionPrice;
-            buyFrom = 0;
-        }
-        if (availableOnFeeContract && feeContractPrice < purchasePrice) {
-            purchasePrice = feeContractPrice;
-            buyFrom = 1;
-        }
-        if (availableOnOpenSea && openSeaPrice < purchasePrice) {
-            purchasePrice = openSeaPrice;
-            buyFrom = 2;
-        }
+        uint256 purchasePrice = feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice 
+            ? feeContractFloorPrice : openSeaPrice;
+        uint256 purchaseTokenId = feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice 
+            ? feeContractTokenId : tokenId;
 
         if (purchasePrice > currentFees) revert NotEnoughEth();
 
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        // Execute the purchase
-        if (buyFrom == 0) {
-            // Buy from collection marketplace
-            bytes memory buyData = abi.encodeWithSignature("buy(uint256)", tokenId);
-            (bool success, bytes memory reason) = address(collection).call{value: purchasePrice}(buyData);
-            if (!success) revert ExternalCallFailed(reason);
-        } else if (buyFrom == 1) {
-            // Buy from previous FeeContract
-            IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(tokenId);
+        if (feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice) {
+            IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(purchaseTokenId);
         } else {
-            // Buy from OpenSea
-            openSeaBuyer.buyNFT{value: purchasePrice}(openSeaOrder);
+            _executeOpenSeaPurchase(openSeaOrder, purchasePrice);
+            return;
         }
 
-        // Verify purchase success
-        uint256 nftBalanceAfter = collection.balanceOf(address(this));
-        if (nftBalanceAfter != nftBalanceBefore + 1) revert NeedToBuyNFT();
-        if (collection.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
-
-        // Update state
-        uint256 actualCost = ethBalanceBefore - address(this).balance;
-        currentFees -= actualCost;
-        currentHoldings++;
-
-        uint256 salePrice = actualCost * priceMultiplier / 1000;
-        nftForSale[tokenId] = salePrice;
-        
-        emit NFTBoughtByProtocol(tokenId, actualCost, salePrice);
+        _completePurchase(purchaseTokenId, ethBalanceBefore, nftBalanceBefore);
     }
 
     /// @notice Buy an NFT using collected fees
@@ -251,41 +170,16 @@ contract FeeContract is ReentrancyGuard {
         address target
     ) external nonReentrant {
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
+        if (collection.ownerOf(expectedId) == address(this)) revert AlreadyNFTOwner();
+        if (value > currentFees) revert NotEnoughEth();
 
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        if (collection.ownerOf(expectedId) == address(this)) {
-            revert AlreadyNFTOwner();
-        }
-
-        if (value > currentFees) {
-            revert NotEnoughEth();
-        }
-
         (bool success, bytes memory reason) = target.call{value: value}(data);
-        if (!success) {
-            revert ExternalCallFailed(reason);
-        }
+        if (!success) revert ExternalCallFailed(reason);
 
-        uint256 nftBalanceAfter = collection.balanceOf(address(this));
-
-        if (nftBalanceAfter != nftBalanceBefore + 1) {
-            revert NeedToBuyNFT();
-        }
-
-        if (collection.ownerOf(expectedId) != address(this)) {
-            revert NotNFTOwner();
-        }
-
-        uint256 cost = ethBalanceBefore - address(this).balance;
-        currentFees -= cost;
-        currentHoldings++;
-
-        uint256 salePrice = cost * priceMultiplier / 1000;
-        nftForSale[expectedId] = salePrice;
-        
-        emit NFTBoughtByProtocol(expectedId, cost, salePrice);
+        _completePurchase(expectedId, ethBalanceBefore, nftBalanceBefore);
     }
 
     /// @notice Sell an NFT to a user
@@ -299,6 +193,8 @@ contract FeeContract is ReentrancyGuard {
         collection.transferFrom(address(this), msg.sender, tokenId);
         
         delete nftForSale[tokenId];
+        // Remove tokenId from heldTokenIds array
+        _removeTokenId(tokenId);
         // DO NOT decrement currentHoldings - keep the count for vault capacity
         // currentHoldings--; // ← REMOVED: NFT was bought to be held, selling doesn't reduce capacity
         
@@ -352,6 +248,105 @@ contract FeeContract is ReentrancyGuard {
     }
 
     /*                  INTERNAL FUNCTIONS                 */
+
+    /// @notice Get the floor price (minimum price) of all NFTs in a FeeContract
+    /// @param feeContractAddress The address of the FeeContract to check
+    /// @return floorPrice The minimum price found
+    /// @return tokenId The tokenId with the minimum price
+    function _getFloorPrice(address feeContractAddress) internal view returns (uint256 floorPrice, uint256 tokenId) {
+        floorPrice = type(uint256).max;
+        tokenId = 0;
+        
+        IFeeContract feeContract = IFeeContract(feeContractAddress);
+        uint256 holdings = feeContract.currentHoldings();
+        
+        if (holdings == 0) {
+            return (0, 0);
+        }
+        
+        // Get all tokenIds held by the previousFeeContract
+        uint256[] memory tokenIds;
+        try feeContract.getHeldTokenIds() returns (uint256[] memory ids) {
+            tokenIds = ids;
+        } catch {
+            // If we can't get tokenIds, return 0
+            return (0, 0);
+        }
+        
+        // Iterate through all tokenIds held by the previousFeeContract
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 id = tokenIds[i];
+            // Check if this token is for sale
+            try feeContract.nftForSale(id) returns (uint256 price) {
+                if (price > 0 && price < floorPrice) {
+                    floorPrice = price;
+                    tokenId = id;
+                }
+            } catch {
+                // Continue to next token if nftForSale fails
+                continue;
+            }
+        }
+        
+        // If no floor price was found, return 0
+        if (floorPrice == type(uint256).max) {
+            return (0, 0);
+        }
+        
+        return (floorPrice, tokenId);
+    }
+
+    /// @notice Execute a purchase on OpenSea and update vault state
+    function _executeOpenSeaPurchase(
+        BasicOrderParameters calldata openSeaOrder,
+        uint256 maxPrice
+    ) internal {
+        if (currentHoldings >= MAX_NFTS) revert ContractFull();
+        if (openSeaOrder.offerToken != address(collection)) revert InvalidCollection();
+
+        uint256 tokenId = openSeaOrder.offerIdentifier;
+        if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
+        if (maxPrice > currentFees) revert NotEnoughEth();
+
+        uint256 ethBalanceBefore = address(this).balance;
+        uint256 nftBalanceBefore = collection.balanceOf(address(this));
+
+        openSeaBuyer.buyNFTBasic{value: maxPrice}(openSeaOrder);
+
+        _completePurchase(tokenId, ethBalanceBefore, nftBalanceBefore);
+    }
+
+    /// @notice Complete purchase by verifying NFT received and updating state
+    function _completePurchase(uint256 tokenId, uint256 ethBalanceBefore, uint256 nftBalanceBefore) internal {
+        uint256 nftBalanceAfter = collection.balanceOf(address(this));
+        if (nftBalanceAfter != nftBalanceBefore + 1) revert NeedToBuyNFT();
+        if (collection.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
+
+        uint256 actualCost = ethBalanceBefore - address(this).balance;
+        currentFees -= actualCost;
+        currentHoldings++;
+        heldTokenIds.push(tokenId);
+
+        uint256 salePrice = actualCost * priceMultiplier / 1000;
+        nftForSale[tokenId] = salePrice;
+
+        emit NFTBoughtByProtocol(tokenId, actualCost, salePrice);
+    }
+
+    /// @notice Remove a tokenId from the heldTokenIds array
+    /// @param tokenId The tokenId to remove
+    function _removeTokenId(uint256 tokenId) internal {
+        uint256 length = heldTokenIds.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (heldTokenIds[i] == tokenId) {
+                // Move the last element to the position of the element to delete
+                heldTokenIds[i] = heldTokenIds[length - 1];
+                // Remove the last element
+                heldTokenIds.pop();
+                break;
+            }
+        }
+    }
 
     /// @notice Internal function to buy and burn RARITY tokens
     function _buyAndBurnTokens(uint256 amountIn) internal returns (uint256) {

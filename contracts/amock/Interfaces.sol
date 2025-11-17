@@ -36,6 +36,33 @@ struct ExactInputSingleParams {
     bytes hookData;
 }
 
+// OpenSea BasicOrderParameters (for fulfillBasicOrder_efficient_6GL6yc)
+struct BasicOrderParameters {
+    address considerationToken;
+    uint256 considerationIdentifier;
+    uint256 considerationAmount;
+    address payable offerer;
+    address zone;
+    address offerToken;
+    uint256 offerIdentifier; // This is the tokenId
+    uint256 offerAmount;
+    uint8 basicOrderType;
+    uint256 startTime;
+    uint256 endTime;
+    bytes32 zoneHash;
+    uint256 salt;
+    bytes32 offererConduitKey;
+    bytes32 fulfillerConduitKey;
+    uint256 totalOriginalAdditionalRecipients;
+    AdditionalRecipient[] additionalRecipients;
+    bytes signature;
+}
+
+struct AdditionalRecipient {
+    uint256 amount;
+    address payable recipient;
+}
+
 interface IFeeContract {
     // View functions
     function isFull() external view returns (bool);
@@ -44,12 +71,13 @@ interface IFeeContract {
     function collection() external view returns (address);
     function rarityToken() external view returns (address);
     function nftForSale(uint256 tokenId) external view returns (uint256);
+    function getHeldTokenIds() external view returns (uint256[] memory);
     
     // Core functions
     function addFees() external payable;
     function buyTargetNFT(uint256 value, bytes calldata data, uint256 expectedId, address target) external;
     function sellTargetNFT(uint256 tokenId) external payable;
-    function smartBuyNFT(uint256 tokenId, address previousFeeContract) external;
+    function smartBuyNFT(address previousFeeContract, BasicOrderParameters calldata openSeaOrder) external;
     function processTokenTwap() external;
     function buybackAndBurn(uint256 amountIn) external;
     

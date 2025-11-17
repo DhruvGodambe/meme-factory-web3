@@ -15,10 +15,10 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 | Contract | Address | BaseScan Link | Status | Audit Scope |
 |----------|---------|---------------|---------|-------------|
 | **NFTStrategyFactory** | `0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039` | [View on BaseScan](https://basescan.org/address/0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHook** | `0x0B7e30C74cE52CBa10c91357655955006C9a68c4` | [View on BaseScan](https://basescan.org/address/0x0B7e30C74cE52CBa10c91357655955006C9a68c4#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategy (RARITY Token)** | `0xefd37af75982b8462c4589b9e820fca1bcaa8d86` | [View on BaseScan](https://basescan.org/address/0xefd37af75982b8462c4589b9e820fca1bcaa8d86#code) | ✅ Verified | ✅ In Scope |
-| **FeeContract** | `0x7f0025865005bc1593ac052e7d687c3ee4b72ad9` | [View on BaseScan](https://basescan.org/address/0x7f0025865005bc1593ac052e7d687c3ee4b72ad9#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHookMiner** | `0x1AF607dE9cdB08d57EdC0E1337B1E3ef43b43453` | [View on BaseScan](https://basescan.org/address/0x1AF607dE9cdB08d57EdC0E1337B1E3ef43b43453#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHook** | `0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4` | [View on BaseScan](https://basescan.org/address/0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategy (RARITY Token)** | `0xefd37af75982b8462c4589b9e820fca1bcaa8d86` | [View on BaseScan](https://basescan.org/token/0x9a6204114d072cdfcf5cebb6e4f93b0e72528ee3#code) | ✅ Verified | ✅ In Scope |
+| **FeeContract** | `0x7f0025865005bc1593ac052e7d687c3ee4b72ad9` | [View on BaseScan](https://basescan.org/address/0x7b672e5e87da80656b43622ddc40c4b3dc6253ed#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHookMiner** | `0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2` | [View on BaseScan](https://basescan.org/address/0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2#code) | ✅ Verified | ✅ In Scope |
 
 **Supporting Contracts (Out of Scope for Audit):**
 
@@ -34,6 +34,11 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 - **Status**: ✅ All contracts verified and operational
 - **Fee System**: ✅ Active (15% flat fee on all swaps)
 - **Swap Status**: ✅ Swaps working with fees collected
+- **Last Migration**: ✅ Hook migrated with updated FeeContract (Nov 2025)
+  - New Hook: `0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4`
+  - Previous Hook: `0xcd1d8048FC7bfec63118a5bF54D477dE3D3168C4` (kept for reference)
+  - New Hook Miner: `0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2`
+  - Previous Hook Miner: `0x58e925B1b1929565A878808010aea19097793111` (kept for reference)
 
 ### Uniswap V4 Integration on Base
 
@@ -46,7 +51,7 @@ The protocol is fully integrated with Uniswap V4 on Base Mainnet. Users can swap
 ### Quick Links
 
 - **Factory Contract**: [View on BaseScan](https://basescan.org/address/0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039#code)
-- **Hook Contract**: [View on BaseScan](https://basescan.org/address/0x0B7e30C74cE52CBa10c91357655955006C9a68c4#code)
+- **Hook Contract**: [View on BaseScan](https://basescan.org/address/0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4#code)
 - **RARITY Token**: [View on BaseScan](https://basescan.org/address/0xefd37af75982b8462c4589b9e820fca1bcaa8d86#code)
 - **FeeContract**: [View on BaseScan](https://basescan.org/address/0x7f0025865005bc1593ac052e7d687c3ee4b72ad9#code)
 - **RestrictedToken**: [View on BaseScan](https://basescan.org/address/0x11bd3952C622D69551DcE28b5b9769CA39c88dBc#code)
@@ -325,6 +330,7 @@ The following contracts are **not in scope for security audit** as they are test
 - `currentFees`: ETH balance available for purchases
 - `priceMultiplier`: Markup multiplier (default: 1200 = 20%)
 - `nftForSale`: Mapping from tokenId to sale price
+- `heldTokenIds`: Array tracking all tokenIds held by this contract (for enumeration and floor price calculation)
 - `ethToTwap`: Accumulated ETH for buyback operations
 - `lastTwapBlock`: Last block TWAP was executed
 - `TWAP_INCREMENT`: Amount of ETH per TWAP operation (1 ETH)
@@ -332,9 +338,13 @@ The following contracts are **not in scope for security audit** as they are test
 
 **Key Functions**:
 - `addFees()`: Receive ETH fees from hook (hook-only)
-- `smartBuyNFT(tokenId, previousFeeContract, openSeaOrder)`: Purchase NFT from cheapest source
+- `smartBuyNFT(previousFeeContract, openSeaOrder)`: Purchase NFT from cheapest source (OpenSea or previous FeeContract)
+  - `tokenId` is extracted from `openSeaOrder.offerIdentifier`
+  - Compares floor price from previous FeeContract (enumerates all held NFTs) vs OpenSea price
 - `buyTargetNFT(value, data, expectedId, target)`: Generic NFT purchase function
 - `sellTargetNFT(tokenId)`: Sell NFT to user (payable, exact price required)
+  - Removes `tokenId` from `heldTokenIds` array upon sale
+- `getHeldTokenIds()`: Returns array of all tokenIds currently held by this contract
 - `processTokenTwap()`: Execute TWAP buyback-and-burn with caller reward
 - `buybackAndBurn(amountIn)`: Direct buyback function (no delay/reward)
 - `setPriceMultiplier(uint256)`: Factory can update markup (1100-10000 range)
@@ -517,34 +527,32 @@ The following contracts are used by the protocol but are **not in scope for secu
 
 The FeeContract implements a sophisticated smart buying system that compares prices across multiple sources and purchases from the cheapest available option.
 
-1. **Price Discovery**: Off-chain service or admin calls `FeeContract.smartBuyNFT(tokenId, previousFeeContract, openSeaOrder)`:
-   - **Collection Marketplace Check**:
-     - Calls `ICollectionWithListings.listings(tokenId)`
-     - Retrieves seller address and price
-     - Validates listing exists (seller ≠ address(0), price > 0)
-     - Sets `collectionPrice` and `availableOnCollection = true`
+1. **Price Discovery**: Off-chain service or admin calls `FeeContract.smartBuyNFT(previousFeeContract, openSeaOrder)`:
+   - **Note**: The `tokenId` is extracted from `openSeaOrder.offerIdentifier` (not provided separately)
    - **Previous FeeContract Check**:
      - If `previousFeeContract` is provided (≠ address(0)):
-       - Calls `IFeeContract(previousFeeContract).nftForSale(tokenId)`
-       - Retrieves sale price from previous vault
-       - Verifies previous FeeContract actually owns the NFT
+       - Calls `IFeeContract(previousFeeContract).getHeldTokenIds()` to get all NFTs held by previous vault
+       - Enumerates through all held NFTs (up to MAX_NFTS = 5) to find the floor price
+       - For each held NFT, calls `IFeeContract(previousFeeContract).nftForSale(tokenId)` to get sale price
+       - Selects the cheapest NFT available from previous FeeContract
        - Sets `feeContractPrice` and `availableOnFeeContract = true`
+       - Sets `feeContractTokenId` to the tokenId of the cheapest NFT
    - **OpenSea Check**:
      - If `openSeaOrder` is provided:
-       - Validates order parameters (NFT token, tokenId match)
-       - Extracts price from consideration items (what buyer pays)
+       - Extracts `tokenId` from `openSeaOrder.offerIdentifier`
+       - Validates order parameters (NFT token, tokenId match collection)
+       - Calculates total price from `considerationAmount` + sum of `additionalRecipients` amounts
        - Sets `openSeaPrice` and `availableOnOpenSea = true`
 
 2. **Price Comparison Algorithm**:
    - Initializes `purchasePrice = type(uint256).max`
    - Compares all available sources:
-     - If collection marketplace available and `collectionPrice < purchasePrice`:
-       - Sets `purchasePrice = collectionPrice`, `buyFrom = 0`
      - If previous FeeContract available and `feeContractPrice < purchasePrice`:
-       - Sets `purchasePrice = feeContractPrice`, `buyFrom = 1`
+       - Sets `purchasePrice = feeContractPrice`, `buyFrom = 1`, `purchaseTokenId = feeContractTokenId`
      - If OpenSea available and `openSeaPrice < purchasePrice`:
-       - Sets `purchasePrice = openSeaPrice`, `buyFrom = 2`
+       - Sets `purchasePrice = openSeaPrice`, `buyFrom = 2`, `purchaseTokenId = openSeaOrder.offerIdentifier`
    - Selects cheapest valid option
+   - **Note**: Collection marketplace check has been removed - only OpenSea and previous FeeContract are compared
 
 3. **Validation**:
    - Checks `currentHoldings < MAX_NFTS` (5 NFTs max)
@@ -553,15 +561,13 @@ The FeeContract implements a sophisticated smart buying system that compares pri
    - Reverts if no valid source found
 
 4. **Purchase Execution**:
-   - **From Collection Marketplace** (`buyFrom = 0`):
-     - Calls `collection.buy(tokenId)` with `purchasePrice` ETH
-     - Executes marketplace purchase
    - **From Previous FeeContract** (`buyFrom = 1`):
-     - Calls `previousFeeContract.sellTargetNFT{value: purchasePrice}(tokenId)`
-     - Purchases from previous vault at floor price
+     - Calls `previousFeeContract.sellTargetNFT{value: purchasePrice}(purchaseTokenId)`
+     - Purchases from previous vault at floor price (cheapest NFT from all held NFTs)
    - **From OpenSea** (`buyFrom = 2`):
-     - Calls `openSeaBuyer.buyNFT{value: purchasePrice}(openSeaOrder)`
-     - Fulfills Seaport order via OpenSea buyer contract
+     - Calls `openSeaBuyer.buyNFTBasic(openSeaOrder)` with `purchasePrice` ETH
+     - Fulfills Seaport BasicOrder via OpenSea buyer contract
+     - Uses `BasicOrderParameters` struct with `tokenId` in `offerIdentifier`
 
 5. **Purchase Verification**:
    - Verifies NFT balance increased by 1
@@ -572,9 +578,10 @@ The FeeContract implements a sophisticated smart buying system that compares pri
 6. **State Updates**:
    - Deducts actual cost from `currentFees`
    - Increments `currentHoldings`
+   - Adds `purchaseTokenId` to `heldTokenIds` array (for tracking all NFTs held)
    - Calculates sale price with markup: `salePrice = actualCost * priceMultiplier / 1000`
-   - Sets `nftForSale[tokenId] = salePrice`
-   - Emits `NFTBoughtByProtocol(tokenId, purchasePrice, salePrice)` event
+   - Sets `nftForSale[purchaseTokenId] = salePrice`
+   - Emits `NFTBoughtByProtocol(purchaseTokenId, purchasePrice, salePrice)` event
 
 #### 5.2 Simple Buy Function - Direct Purchase
 

@@ -143,7 +143,7 @@ async function main() {
     console.log("💾 Storing salt...");
     const storeSaltTx = await hookMiner.storeSalt(predictedHook, predictedSalt, {
       ...txOpts,
-      gasLimit: 800_000,
+      gasLimit: 10_000_000,
     });
     const storeReceipt = await storeSaltTx.wait();
     console.log(

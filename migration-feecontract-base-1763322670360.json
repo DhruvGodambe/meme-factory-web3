@@ -1,0 +1,36 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "timestamp": "2025-11-16T19:51:10.360Z",
+  "deployer": "0xF93E7518F79C2E1978D6862Dbf161270040e623E",
+  "migrationType": "FeeContract Update - Smart Buy with Floor Price",
+  "description": "Redeployed hook with updated FeeContract that includes smartBuyNFT with floor price comparison between OpenSea and previous FeeContract",
+  "oldDeployment": {
+    "hook": "0x0B7e30C74cE52CBa10c91357655955006C9a68c4",
+    "openSeaBuyer": "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c",
+    "feeContract": "0x7f0025865005bc1593ac052e7d687c3ee4b72ad9"
+  },
+  "newDeployment": {
+    "hook": "0xcd1d8048FC7bfec63118a5bF54D477dE3D3168C4",
+    "openSeaBuyer": "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c",
+    "salt": "0x000000000000000000000000000000000000000000000000000000000000615b"
+  },
+  "contracts": {
+    "NFTStrategyFactory": "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039",
+    "NFTStrategyHookMiner": "0x58e925B1b1929565A878808010aea19097793111",
+    "NFTStrategyHook": "0xcd1d8048FC7bfec63118a5bF54D477dE3D3168C4",
+    "RestrictedToken": "0x11bd3952C622D69551DcE28b5b9769CA39c88dBc",
+    "OpenSeaNFTBuyer": "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c",
+    "oldHook": "0x0B7e30C74cE52CBa10c91357655955006C9a68c4",
+    "oldFeeContract": "0x7f0025865005bc1593ac052e7d687c3ee4b72ad9",
+    "existingContracts": {
+      "NFTStrategyFactory": "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039",
+      "NFTStrategyHook": "0x0B7e30C74cE52CBa10c91357655955006C9a68c4",
+      "NFTStrategy": "0xefd37af75982b8462c4589b9e820fca1bcaa8d86",
+      "FeeContract": "0x7f0025865005bc1593ac052e7d687c3ee4b72ad9",
+      "NFTStrategyHookMiner": "0x1AF607dE9cdB08d57EdC0E1337B1E3ef43b43453",
+      "OpenSeaNFTBuyer": "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c",
+      "RestrictedToken": "0x11bd3952C622D69551DcE28b5b9769CA39c88dBc"
+    }
+  }
+}
