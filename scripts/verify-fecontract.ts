@@ -27,7 +27,7 @@ async function verify(address: string, constructorArgs: any[], contractPath?: st
 }
 
 async function main() {
-  const FEE_CONTRACT_ADDRESS = "0x7b672e5e87da80656b43622ddc40c4b3dc6253ed";
+  const FEE_CONTRACT_ADDRESS = "0x206EA5f979b3a805f7f9626BA07dDfa7ed4635Fb";
   
   console.log("\n🔍 Verifying FeeContract on BaseScan");
   console.log("=".repeat(60));
@@ -36,7 +36,7 @@ async function main() {
 
   // Known addresses from Base Mainnet
   const FACTORY_ADDRESS = "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039";
-  const HOOK_ADDRESS = "0xcd1d8048FC7bfec63118a5bF54D477dE3D3168C4"; // New hook
+  const HOOK_ADDRESS = "0x5DB041c70Af719EB8A6B23654006cc8D9E5628C4"; // New hook
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
   const OPEN_SEA_BUYER = "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c";
 
@@ -51,7 +51,7 @@ async function main() {
       
       // Try to get from factory - check all known RARITY tokens
       const factory = await ethers.getContractAt("NFTStrategyFactory", FACTORY_ADDRESS);
-      const knownRarityToken = "0xefd37af75982b8462c4589b9e820fca1bcaa8d86"; // From README
+      const knownRarityToken = "0xf5b0e8a746cF486BB7aa80FC081F4E40b264c32e"; // From README
       
       const collection = await factory.nftStrategyToCollection(knownRarityToken);
       if (collection !== ethers.ZeroAddress) {
