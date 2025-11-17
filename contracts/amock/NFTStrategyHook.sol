@@ -74,6 +74,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     error NotCollectionOwner();
     error NotAuthorizedCaller();
     error InvalidHotWallet();
+    error InsufficientBalance();
+    error VaultFeeTransferFailed();
 
     /*                    CUSTOM EVENTS                    */
 
@@ -103,18 +105,15 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /*                     FUNCTIONS                       */
 
 
-    function setNFTStrategyFactory(address _nftStrategyFactory) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setNFTStrategyFactory(address _nftStrategyFactory) external onlyOwnerOrAuthorized {
         nftStrategyFactory = INFTStrategyFactory(_nftStrategyFactory);
     }
 
-    function setpoolmanager(address _poolManager) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setpoolmanager(address _poolManager) external onlyOwnerOrAuthorized {
         manager = IPoolManager(_poolManager);
     }
 
-    function updateFeeAddress(address _feeAddress) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function updateFeeAddress(address _feeAddress) external onlyOwnerOrAuthorized {
         feeAddress = _feeAddress;
     }
 
@@ -126,34 +125,34 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     }
 
     function adminUpdateFeeAddress(address nftStrategy, address destination) external {
-        if (msg.sender != nftStrategyFactory.owner() && msg.sender != address(nftStrategyFactory)) revert NotNFTStrategyFactoryOwner();        
+        if (
+            msg.sender != nftStrategyFactory.owner() &&
+            msg.sender != address(nftStrategyFactory) &&
+            !authorizedCallers[msg.sender]
+        ) revert NotNFTStrategyFactoryOwner();
         feeAddressClaimedByOwner[nftStrategy] = destination;
     }
 
     /*               RARITY TOWN PROTOCOL FUNCTIONS        */
 
-    function setActiveFeeContract(address rarityToken, address feeContract) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setActiveFeeContract(address rarityToken, address feeContract) external onlyOwnerOrAuthorized {
         activeFeeContract[rarityToken] = feeContract;
         feeContractToRarityToken[feeContract] = rarityToken;
     }
 
-    function setFounderWallet(address _founderWallet) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setFounderWallet(address _founderWallet) external onlyOwnerOrAuthorized {
         founderWallet = _founderWallet;
     }
 
     /// @notice Set founder wallet 1 address (0.25% recipient)
     /// @param _founderWallet1 The new founder wallet 1 address
-    function setFounderWallet1(address _founderWallet1) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setFounderWallet1(address _founderWallet1) external onlyOwnerOrAuthorized {
         founderWallet1 = _founderWallet1;
     }
 
     /// @notice Set founder wallet 2 address (0.75% recipient)
     /// @param _founderWallet2 The new founder wallet 2 address
-    function setFounderWallet2(address _founderWallet2) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setFounderWallet2(address _founderWallet2) external onlyOwnerOrAuthorized {
         founderWallet2 = _founderWallet2;
     }
 
@@ -169,8 +168,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         return founderWallet2;
     }
 
-    function setBrandAsset(address _brandAssetToken, address _brandAssetHook, bool _enabled) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setBrandAsset(address _brandAssetToken, address _brandAssetHook, bool _enabled) external onlyOwnerOrAuthorized {
         brandAssetToken = _brandAssetToken;
         brandAssetHook = _brandAssetHook;
         brandAssetEnabled = _enabled;
@@ -180,8 +178,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
     /// @notice Set the hot wallet address (can be generated off-chain)
     /// @param _hotWallet The new hot wallet address
-    function setHotWallet(address _hotWallet) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setHotWallet(address _hotWallet) external onlyOwnerOrAuthorized {
         if (_hotWallet == address(0)) revert InvalidHotWallet();
         
         // Remove old hot wallet authorization
@@ -197,17 +194,15 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /// @notice Add or remove authorized callers for getter functions
     /// @param caller The address to authorize/deauthorize
     /// @param authorized Whether to authorize or deauthorize
-    function setAuthorizedCaller(address caller, bool authorized) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setAuthorizedCaller(address caller, bool authorized) external onlyOwnerOrAuthorized {
         authorizedCallers[caller] = authorized;
     }
 
     /// @notice Fund the hot wallet with ETH from the hook contract
     /// @param amount Amount of ETH to send to hot wallet (in wei)
-    function fundHotWallet(uint256 amount) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function fundHotWallet(uint256 amount) external onlyOwnerOrAuthorized {
         if (hotWallet == address(0)) revert InvalidHotWallet();
-        if (address(this).balance < amount) revert("Insufficient balance");
+        if (address(this).balance < amount) revert InsufficientBalance();
         
         SafeTransferLib.forceSafeTransferETH(hotWallet, amount);
     }
@@ -223,6 +218,14 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
     modifier onlyAuthorized() {
         if (!authorizedCallers[msg.sender]) revert NotAuthorizedCaller();
+        _;
+    }
+
+    modifier onlyOwnerOrAuthorized() {
+        address owner = nftStrategyFactory.owner();
+        if (msg.sender != owner && !authorizedCallers[msg.sender]) {
+            revert NotNFTStrategyFactoryOwner();
+        }
         _;
     }
 
@@ -379,13 +382,11 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         return activeFeeContract[rarityToken];
     }
 
-    function setRouterAddress(address payable _routerAddress) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setRouterAddress(address payable _routerAddress) external onlyOwnerOrAuthorized {
         routerAddress = _routerAddress;
     }
 
-    function setOpenSeaBuyer(address _openSeaBuyer) external {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function setOpenSeaBuyer(address _openSeaBuyer) external onlyOwnerOrAuthorized {
         openSeaBuyer = _openSeaBuyer;
     }
 
@@ -396,11 +397,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /// @notice Manually deploy a new FeeContract for a RARITY token
     /// @param rarityToken The RARITY token address to create a FeeContract for
     /// @return feeContract Address of the newly created FeeContract
-    function deployNewFeeContract(address rarityToken) external returns (address) {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function deployNewFeeContract(address rarityToken) external onlyOwnerOrAuthorized returns (address) {
         
         address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
-        require(collection != address(0), "Invalid RARITY token");
+        if (collection == address(0)) revert InvalidCollection();
         
         FeeContract newFeeContract = new FeeContract(
             address(nftStrategyFactory),
@@ -421,11 +421,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /// @notice Force create a new FeeContract even if current one isn't full
     /// @param rarityToken The RARITY token address
     /// @return feeContract Address of the newly created FeeContract
-    function forceRotateFeeContract(address rarityToken) external returns (address) {
-        if (msg.sender != nftStrategyFactory.owner()) revert NotNFTStrategyFactoryOwner();
+    function forceRotateFeeContract(address rarityToken) external onlyOwnerOrAuthorized returns (address) {
         
         address collection = nftStrategyFactory.nftStrategyToCollection(rarityToken);
-        require(collection != address(0), "Invalid RARITY token");
+        if (collection == address(0)) revert InvalidCollection();
         
         FeeContract newFeeContract = new FeeContract(
             address(nftStrategyFactory),
@@ -464,7 +463,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         address activeVault = activeFeeContract[rarityToken];
         if (activeVault != address(0)) {
             (bool success,) = activeVault.call{value: vaultAmount}(abi.encodeWithSignature("addFees()"));
-            require(success, "Vault fee transfer failed");
+            if (!success) revert VaultFeeTransferFailed();
         } else {
             // If no FeeContract exists, send vault portion to founder wallets proportionally
             // Split vault portion: 25% to wallet 1, 75% to wallet 2
@@ -601,7 +600,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
         if (nftStrategyFactory.routerRestrict()) {
-            INFTStrategy(Currency.unwrap(key.currency1)).setMidSwap(true);
+            address rarityToken = Currency.unwrap(key.currency1);
+            INFTStrategy(rarityToken).setMidSwap(true);
         }
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
@@ -620,10 +620,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         if (swapAmount < 0) swapAmount = -swapAmount;
 
         bool ethFee = Currency.unwrap(feeCurrency) == address(0);
-        address collection = Currency.unwrap(key.currency1);
+        address rarityToken = Currency.unwrap(key.currency1);
 
-        uint128 currentFee = calculateFee(collection, params.zeroForOne);
-        uint256 feeAmount = uint128(swapAmount) * currentFee / TOTAL_BIPS;
+        uint128 currentFee = calculateFee(rarityToken, params.zeroForOne);
+        uint256 feeAmount = uint256(uint128(swapAmount)) * currentFee / TOTAL_BIPS;
 
         if(feeAmount == 0) {
             return (BaseHook.afterSwap.selector, 0);
@@ -638,25 +638,24 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             ethFee ? 0 : uint128(feeAmount)
         );
 
-        address rarityToken = Currency.unwrap(key.currency1);
-        
+        uint256 amountForProcessing = feeAmount;
         if (!ethFee) {
-            uint256 feeInETH = _swapToEth(key, feeAmount);
-            _processFees(rarityToken, feeInETH); 
-        } else {
-            _processFees(rarityToken, feeAmount); 
+            amountForProcessing = _swapToEth(key, feeAmount);
         }
+        _processFees(rarityToken, amountForProcessing);
 
-        emit Trade(collection, _getCurrentPrice(key), delta.amount0(), delta.amount1());
+        emit Trade(rarityToken, _getCurrentPrice(key), delta.amount0(), delta.amount1());
 
         if (nftStrategyFactory.routerRestrict()) {
-            INFTStrategy(Currency.unwrap(key.currency1)).setMidSwap(false);
+            INFTStrategy(rarityToken).setMidSwap(false);
         }
         return (BaseHook.afterSwap.selector, feeAmount.toInt128());
     }
 
     function _swapToEth(PoolKey memory key, uint256 amount) internal returns (uint256) {
         uint256 ethBefore = address(this).balance;
+        Currency currency0 = key.currency0;
+        Currency currency1 = key.currency1;
         
         BalanceDelta delta = manager.swap(
             key,
@@ -668,16 +667,18 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             bytes("")
         );
 
-        if (delta.amount0() < 0) {
-            key.currency0.settle(poolManager, address(this), uint256(int256(-delta.amount0())), false);
-        } else if (delta.amount0() > 0) {
-            key.currency0.take(poolManager, address(this), uint256(int256(delta.amount0())), false);
+        int128 amount0Delta = delta.amount0();
+        if (amount0Delta < 0) {
+            currency0.settle(poolManager, address(this), uint256(uint128(-amount0Delta)), false);
+        } else if (amount0Delta > 0) {
+            currency0.take(poolManager, address(this), uint256(uint128(amount0Delta)), false);
         }
 
-        if (delta.amount1() < 0) {
-            key.currency1.settle(poolManager, address(this), uint256(int256(-delta.amount1())), false);
-        } else if (delta.amount1() > 0) {
-            key.currency1.take(poolManager, address(this), uint256(int256(delta.amount1())), false);
+        int128 amount1Delta = delta.amount1();
+        if (amount1Delta < 0) {
+            currency1.settle(poolManager, address(this), uint256(uint128(-amount1Delta)), false);
+        } else if (amount1Delta > 0) {
+            currency1.take(poolManager, address(this), uint256(uint128(amount1Delta)), false);
         }
 
         return address(this).balance - ethBefore;

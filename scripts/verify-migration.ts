@@ -54,8 +54,8 @@ async function main() {
   const FACTORY_ADDRESS = "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039";
 
   // Newly deployed contracts from migration (Nov 2025)
-  const NEW_HOOK = "0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4";
-  const NEW_HOOK_MINER = "0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2";
+  const NEW_HOOK = "0x5DB041c70Af719EB8A6B23654006cc8D9E5628C4";
+  const NEW_HOOK_MINER = "0x56089fA568678940C505Ed966D9F0Ac5cF5885F7";
 
   console.log("📦 Contracts to verify:");
   console.log(`   1. NFTStrategyHook: ${NEW_HOOK}`);

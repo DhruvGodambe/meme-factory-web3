@@ -13,6 +13,10 @@ interface IOpenSeaNFTBuyer {
     function buyNFTBasic(BasicOrderParameters calldata parameters) external payable;
 }
 
+interface INFTStrategyHookAuth {
+    function authorizedCallers(address caller) external view returns (bool);
+}
+
 /// @title FeeContract - Vault for NFT trading and RARITY buyback/burn
 contract FeeContract is ReentrancyGuard {
     /*                      CONSTANTS                      */
@@ -60,6 +64,9 @@ contract FeeContract is ReentrancyGuard {
     error ExternalCallFailed(bytes reason);
     error NoETHToTwap();
     error TwapDelayNotMet();
+    error NotFactoryOrAuthorized();
+    error NotOwnerOrAuthorized();
+    error InvalidMultiplierRange();
 
     /*                     CONSTRUCTOR                     */
     
@@ -83,6 +90,17 @@ contract FeeContract is ReentrancyGuard {
 
     modifier onlyHook() {
         if (msg.sender != hookAddress) revert OnlyHook();
+        _;
+    }
+
+    modifier onlyFactoryOrAuthorized() {
+        if (msg.sender != factory && !_isAuthorized(msg.sender)) revert NotFactoryOrAuthorized();
+        _;
+    }
+
+    modifier onlyOwnerOrAuthorized() {
+        address owner = INFTStrategyFactory(factory).owner();
+        if (msg.sender != owner && !_isAuthorized(msg.sender)) revert NotOwnerOrAuthorized();
         _;
     }
 
@@ -112,13 +130,12 @@ contract FeeContract is ReentrancyGuard {
         address previousFeeContract,
         BasicOrderParameters calldata openSeaOrder
     ) external nonReentrant {
+        address collectionAddress = address(collection);
+        bool openSeaAvailable = openSeaOrder.offerToken == collectionAddress;
+
         if (previousFeeContract == address(0)) {
-            if (openSeaOrder.offerToken != address(collection)) revert InvalidCollection();
-            uint256 price = openSeaOrder.considerationAmount;
-            for (uint256 i = 0; i < openSeaOrder.additionalRecipients.length; i++) {
-                price += openSeaOrder.additionalRecipients[i].amount;
-            }
-            _executeOpenSeaPurchase(openSeaOrder, price);
+            if (!openSeaAvailable) revert InvalidCollection();
+            _executeOpenSeaPurchase(openSeaOrder, _calculateOpenSeaOrderTotal(openSeaOrder));
             return;
         }
 
@@ -126,33 +143,27 @@ contract FeeContract is ReentrancyGuard {
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
         if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
 
-        uint256 feeContractFloorPrice = 0;
-        uint256 feeContractTokenId = 0;
-        uint256 openSeaPrice = type(uint256).max;
-        bool availableOnOpenSea = false;
-
-        if (openSeaOrder.offerToken == address(collection)) {
-            openSeaPrice = openSeaOrder.considerationAmount;
-            for (uint256 i = 0; i < openSeaOrder.additionalRecipients.length; i++) {
-                openSeaPrice += openSeaOrder.additionalRecipients[i].amount;
-            }
-            availableOnOpenSea = true;
+        (uint256 feeContractFloorPrice, uint256 feeContractTokenId) = _getFloorPrice(previousFeeContract);
+        uint256 openSeaPrice;
+        if (openSeaAvailable) {
+            openSeaPrice = _calculateOpenSeaOrderTotal(openSeaOrder);
         }
 
-        (feeContractFloorPrice, feeContractTokenId) = _getFloorPrice(previousFeeContract);
-        if (feeContractFloorPrice == 0 && !availableOnOpenSea) revert NFTNotForSale();
+        bool buyFromFeeContract = feeContractFloorPrice > 0 &&
+            (!openSeaAvailable || feeContractFloorPrice < openSeaPrice);
 
-        uint256 purchasePrice = feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice 
-            ? feeContractFloorPrice : openSeaPrice;
-        uint256 purchaseTokenId = feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice 
-            ? feeContractTokenId : tokenId;
+        if (!buyFromFeeContract && !openSeaAvailable) revert NFTNotForSale();
 
+        uint256 purchasePrice = buyFromFeeContract ? feeContractFloorPrice : openSeaPrice;
+        uint256 purchaseTokenId = buyFromFeeContract ? feeContractTokenId : tokenId;
+
+        if (purchasePrice == 0) revert NFTNotForSale();
         if (purchasePrice > currentFees) revert NotEnoughEth();
 
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        if (feeContractFloorPrice > 0 && feeContractFloorPrice < openSeaPrice) {
+        if (buyFromFeeContract) {
             IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(purchaseTokenId);
         } else {
             _executeOpenSeaPurchase(openSeaOrder, purchasePrice);
@@ -241,9 +252,8 @@ contract FeeContract is ReentrancyGuard {
     /*                  ADMIN FUNCTIONS                    */
 
     /// @notice Update price multiplier for NFT sales
-    function setPriceMultiplier(uint256 _newMultiplier) external {
-        if (msg.sender != factory) revert("Not factory");
-        if (_newMultiplier < 1100 || _newMultiplier > 10000) revert("Invalid multiplier");
+    function setPriceMultiplier(uint256 _newMultiplier) external onlyFactoryOrAuthorized {
+        if (_newMultiplier < 1100 || _newMultiplier > 10000) revert InvalidMultiplierRange();
         priceMultiplier = _newMultiplier;
     }
 
@@ -274,7 +284,8 @@ contract FeeContract is ReentrancyGuard {
         }
         
         // Iterate through all tokenIds held by the previousFeeContract
-        for (uint256 i = 0; i < tokenIds.length; i++) {
+        uint256 idsLength = tokenIds.length;
+        for (uint256 i = 0; i < idsLength; ) {
             uint256 id = tokenIds[i];
             // Check if this token is for sale
             try feeContract.nftForSale(id) returns (uint256 price) {
@@ -282,9 +293,9 @@ contract FeeContract is ReentrancyGuard {
                     floorPrice = price;
                     tokenId = id;
                 }
-            } catch {
-                // Continue to next token if nftForSale fails
-                continue;
+            } catch {}
+            unchecked {
+                ++i;
             }
         }
         
@@ -333,17 +344,41 @@ contract FeeContract is ReentrancyGuard {
         emit NFTBoughtByProtocol(tokenId, actualCost, salePrice);
     }
 
+    function _calculateOpenSeaOrderTotal(BasicOrderParameters calldata openSeaOrder) internal pure returns (uint256) {
+        uint256 total = openSeaOrder.considerationAmount;
+        uint256 recipientsLength = openSeaOrder.additionalRecipients.length;
+        for (uint256 i = 0; i < recipientsLength; ) {
+            total += openSeaOrder.additionalRecipients[i].amount;
+            unchecked {
+                ++i;
+            }
+        }
+        return total;
+    }
+
+    function _isAuthorized(address caller) internal view returns (bool) {
+        try INFTStrategyHookAuth(hookAddress).authorizedCallers(caller) returns (bool isAuthorized) {
+            return isAuthorized;
+        } catch {
+            return false;
+        }
+    }
+
     /// @notice Remove a tokenId from the heldTokenIds array
     /// @param tokenId The tokenId to remove
     function _removeTokenId(uint256 tokenId) internal {
         uint256 length = heldTokenIds.length;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ) {
             if (heldTokenIds[i] == tokenId) {
                 // Move the last element to the position of the element to delete
-                heldTokenIds[i] = heldTokenIds[length - 1];
+                uint256 lastIndex = length - 1;
+                heldTokenIds[i] = heldTokenIds[lastIndex];
                 // Remove the last element
                 heldTokenIds.pop();
                 break;
+            }
+            unchecked {
+                ++i;
             }
         }
     }
@@ -390,8 +425,7 @@ contract FeeContract is ReentrancyGuard {
     }
 
     /// @notice Emergency withdrawal for contract owner
-    function emergencyWithdraw() external {
-        if (msg.sender != INFTStrategyFactory(factory).owner()) revert("Not owner");
+    function emergencyWithdraw() external onlyOwnerOrAuthorized {
         SafeTransferLib.forceSafeTransferETH(msg.sender, address(this).balance);
     }
 

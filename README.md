@@ -15,10 +15,10 @@ The protocol is currently deployed and verified on **Base Mainnet** with all con
 | Contract | Address | BaseScan Link | Status | Audit Scope |
 |----------|---------|---------------|---------|-------------|
 | **NFTStrategyFactory** | `0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039` | [View on BaseScan](https://basescan.org/address/0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHook** | `0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4` | [View on BaseScan](https://basescan.org/address/0xFBa0486f0f12D77aA4D674BB64c4BB1C7f11A8C4#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHook** | `0x5DB041c70Af719EB8A6B23654006cc8D9E5628C4` | [View on BaseScan](https://basescan.org/address/0x5DB041c70Af719EB8A6B23654006cc8D9E5628C4#code) | ✅ Verified | ✅ In Scope |
 | **NFTStrategy (RARITY Token)** | `0xefd37af75982b8462c4589b9e820fca1bcaa8d86` | [View on BaseScan](https://basescan.org/token/0x9a6204114d072cdfcf5cebb6e4f93b0e72528ee3#code) | ✅ Verified | ✅ In Scope |
 | **FeeContract** | `0x7f0025865005bc1593ac052e7d687c3ee4b72ad9` | [View on BaseScan](https://basescan.org/address/0x7b672e5e87da80656b43622ddc40c4b3dc6253ed#code) | ✅ Verified | ✅ In Scope |
-| **NFTStrategyHookMiner** | `0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2` | [View on BaseScan](https://basescan.org/address/0xEA826b5B0e8872BA98c9e73A420Ae94d02037fe2#code) | ✅ Verified | ✅ In Scope |
+| **NFTStrategyHookMiner** | `0x56089fA568678940C505Ed966D9F0Ac5cF5885F7` | [View on BaseScan](https://basescan.org/address/0x56089fA568678940C505Ed966D9F0Ac5cF5885F7#code) | ✅ Verified | ✅ In Scope |
 
 **Supporting Contracts (Out of Scope for Audit):**
 
