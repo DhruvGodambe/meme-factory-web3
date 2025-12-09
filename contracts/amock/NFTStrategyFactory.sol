@@ -284,7 +284,6 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         if (msg.value >= initialBuy) {
             _buyTokens(initialBuy, address(nftStrategy), msg.sender);
         }
-
         emit NFTStrategyLaunched(collection, address(nftStrategy), tokenName, tokenSymbol);
 
         return nftStrategy;
@@ -329,8 +328,13 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
 
         _buyTokens(initialBuy, address(nftStrategy), msg.sender);
 
-        uint256 ethToSend = msg.value - ethToPair - initialBuy;
-        SafeTransferLib.forceSafeTransferETH(feeAddress, ethToSend);
+        uint256 totalRequired = ethToPair + initialBuy;
+        if (msg.value < totalRequired) revert WrongEthAmount();
+        
+        uint256 ethToSend = msg.value - totalRequired;
+        if (ethToSend > 0) {
+            SafeTransferLib.forceSafeTransferETH(feeAddress, ethToSend);
+        }
 
         emit NFTStrategyLaunched(collection, address(nftStrategy), tokenName, tokenSymbol);
 

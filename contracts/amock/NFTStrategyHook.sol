@@ -33,10 +33,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
     uint128 private constant TOTAL_BIPS = 10000;
     uint128 private constant FLAT_FEE = 1500; // 15% flat fee
-    uint128 private constant VAULT_FEE_PORTION = 1400; // 14% to vault
-    uint128 private constant FOUNDER_FEE_PORTION_1 = 25; // 0.25% to founder wallet 1
-    uint128 private constant FOUNDER_FEE_PORTION_2 = 75; // 0.75% to founder wallet 2
-    uint128 private constant FOUNDER_FEE_PORTION = 100; // 1% total founder fee (kept for compatibility)
+    uint128 private constant FEE_CONTRACT_SHARE_BIPS = 9333; // 93.33% of collected hook fee amount
+    uint128 private constant FOUNDER_REMAINDER_SHARE_BIPS = 2500; // 25% of the 6.66% remainder
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
 
@@ -48,12 +46,12 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     // New state for Rarity Town Protocol
     mapping(address => address) public activeFeeContract; // rarityToken => FeeContract
     mapping(address => address) public feeContractToRarityToken; // FeeContract => rarityToken
-    address public founderWallet; // Legacy - kept for compatibility
-    address public founderWallet1; // 0.25% recipient
-    address public founderWallet2; // 0.75% recipient
+    address public founderWallet1; // 25% share of the remainder
+    address public founderWallet2; // fallback recipient for buyback share when disabled
     address public brandAssetToken;
     address public brandAssetHook;
     bool public brandAssetEnabled;
+    bool public buyBackAndBurnEnabled;
     address payable public routerAddress;
     address public openSeaBuyer;
     
@@ -94,7 +92,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         restrictedToken = _restrictedToken;
         nftStrategyFactory = _nftStrategyFactory;
         feeAddress = _feeAddress;
-        founderWallet = _feeAddress; // Initialize founder wallet to fee address (legacy)
         founderWallet1 = _feeAddress; // Initialize founder wallet 1 to fee address (owner)
         founderWallet2 = _feeAddress; // Initialize founder wallet 2 to fee address (owner)
         
@@ -140,30 +137,26 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         feeContractToRarityToken[feeContract] = rarityToken;
     }
 
-    function setFounderWallet(address _founderWallet) external onlyOwnerOrAuthorized {
-        founderWallet = _founderWallet;
-    }
-
     /// @notice Set founder wallet 1 address (0.25% recipient)
     /// @param _founderWallet1 The new founder wallet 1 address
     function setFounderWallet1(address _founderWallet1) external onlyOwnerOrAuthorized {
         founderWallet1 = _founderWallet1;
     }
 
-    /// @notice Set founder wallet 2 address (0.75% recipient)
+    /// @notice Set founder wallet 2 address (fallback recipient for buyback share)
     /// @param _founderWallet2 The new founder wallet 2 address
     function setFounderWallet2(address _founderWallet2) external onlyOwnerOrAuthorized {
         founderWallet2 = _founderWallet2;
     }
 
     /// @notice Get founder wallet 1 address
-    /// @return The address of founder wallet 1 (0.25% recipient)
+    /// @return The address of founder wallet 1 (25% of remainder)
     function getFounderWallet1() external view returns (address) {
         return founderWallet1;
     }
 
     /// @notice Get founder wallet 2 address
-    /// @return The address of founder wallet 2 (0.75% recipient)
+    /// @return The address of founder wallet 2 (fallback buyback recipient)
     function getFounderWallet2() external view returns (address) {
         return founderWallet2;
     }
@@ -172,6 +165,13 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         brandAssetToken = _brandAssetToken;
         brandAssetHook = _brandAssetHook;
         brandAssetEnabled = _enabled;
+        buyBackAndBurnEnabled = _enabled;
+    }
+
+    /// @notice Toggle buyback-and-burn behavior without touching asset configuration
+    /// @param _enabled Whether the buyback flow should be active
+    function setBuyBackAndBurnEnabled(bool _enabled) external onlyOwnerOrAuthorized {
+        buyBackAndBurnEnabled = _enabled;
     }
 
     /*               HOT WALLET SYSTEM FUNCTIONS           */
@@ -358,7 +358,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         isFull = success3 ? abi.decode(data3, (bool)) : false;
     }
 
-    /*               LEGACY RARITY TOKEN GETTERS           */
+    /*               RARITY TOKEN GETTERS                  */
 
     /// @notice Check if current FeeContract is full by RARITY token (manual check)
     function isActiveFeeContractFull(address rarityToken) external view returns (bool) {
@@ -446,53 +446,51 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     function _processFees(address rarityToken, uint256 feeAmount) internal {
         if (feeAmount == 0) return;
         
-        // MANUAL MODE: No automatic FeeContract creation
-        // Admin must manually deploy FeeContracts using deployNewFeeContract()
-        // ensureActiveFeeContract(rarityToken);  // ← COMMENTED OUT
-        
-        // MANUAL MODE: No automatic rotation
-        // Admin must manually rotate using forceRotateFeeContract()
-        // rotateIfFull(rarityToken);  // ← COMMENTED OUT
-        
-        // Calculate fee distribution: 14% to vault, 0.25% to founder wallet 1, 0.75% to founder wallet 2
-        uint256 vaultAmount = (feeAmount * VAULT_FEE_PORTION) / TOTAL_BIPS;
-        uint256 founderAmount1 = (feeAmount * FOUNDER_FEE_PORTION_1) / TOTAL_BIPS;
-        uint256 founderAmount2 = (feeAmount * FOUNDER_FEE_PORTION_2) / TOTAL_BIPS;
-        
-        // Send 14% to active FeeContract (if one exists)
+        // Manual mode: Admin must manage FeeContracts off-chain
+        uint256 vaultAmount = (feeAmount * FEE_CONTRACT_SHARE_BIPS) / TOTAL_BIPS;
+        uint256 remainder = feeAmount - vaultAmount;
+        bool vaultFunded;
+
         address activeVault = activeFeeContract[rarityToken];
-        if (activeVault != address(0)) {
+        if (vaultAmount > 0 && activeVault != address(0)) {
             (bool success,) = activeVault.call{value: vaultAmount}(abi.encodeWithSignature("addFees()"));
-            if (!success) revert VaultFeeTransferFailed();
-        } else {
-            // If no FeeContract exists, send vault portion to founder wallets proportionally
-            // Split vault portion: 25% to wallet 1, 75% to wallet 2
-            founderAmount1 += (vaultAmount * FOUNDER_FEE_PORTION_1) / FOUNDER_FEE_PORTION;
-            founderAmount2 += (vaultAmount * FOUNDER_FEE_PORTION_2) / FOUNDER_FEE_PORTION;
+            vaultFunded = success;
         }
+
+        if (!vaultFunded) {
+            remainder += vaultAmount;
+        }
+
+        if (remainder == 0) {
+            return;
+        }
+
+        uint256 founderAmount = (remainder * FOUNDER_REMAINDER_SHARE_BIPS) / TOTAL_BIPS;
+        uint256 buyBackAmount = remainder - founderAmount;
         
-        // Handle founder fee 1 (0.25% or proportional share if no FeeContract)
-        if (founderAmount1 > 0) {
-            if (brandAssetEnabled && brandAssetToken != address(0)) {
-                // Buy and burn brand asset with wallet 1 portion
-                _buyAndBurnBrandAsset(founderAmount1);
-            } else {
-                // Send to founder wallet 1 (or feeAddressClaimedByOwner if set, but use wallet 1 as default)
-                address destination = feeAddressClaimedByOwner[rarityToken] != address(0) 
-                    ? feeAddressClaimedByOwner[rarityToken] 
-                    : founderWallet1;
-                SafeTransferLib.forceSafeTransferETH(destination, founderAmount1);
+        if (founderAmount > 0) {
+            address destination = feeAddressClaimedByOwner[rarityToken];
+            if (destination == address(0)) {
+                destination = founderWallet1 != address(0) ? founderWallet1 : feeAddress;
+            }
+            if (destination != address(0)) {
+                SafeTransferLib.forceSafeTransferETH(destination, founderAmount);
             }
         }
         
-        // Handle founder fee 2 (0.75% or proportional share if no FeeContract)
-        if (founderAmount2 > 0) {
-            if (brandAssetEnabled && brandAssetToken != address(0)) {
-                // Buy and burn brand asset with wallet 2 portion
-                _buyAndBurnBrandAsset(founderAmount2);
+        if (buyBackAmount > 0) {
+            if (
+                buyBackAndBurnEnabled &&
+                brandAssetEnabled &&
+                brandAssetToken != address(0) &&
+                brandAssetHook != address(0)
+            ) {
+                _buyAndBurnBrandAsset(buyBackAmount);
             } else {
-                // Send to founder wallet 2
-                SafeTransferLib.forceSafeTransferETH(founderWallet2, founderAmount2);
+                address destination = founderWallet2 != address(0) ? founderWallet2 : feeAddress;
+                if (destination != address(0)) {
+                    SafeTransferLib.forceSafeTransferETH(destination, buyBackAmount);
+                }
             }
         }
     }
@@ -506,45 +504,10 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         SafeTransferLib.forceSafeTransferETH(address(0x000000000000000000000000000000000000dEaD), amountIn);
     }
 
-    // Legacy function kept for compatibility
-    function _processFeesLegacy(address collection, uint256 feeAmount) internal {
-        if (feeAmount == 0) return;
-        
-        uint256 depositAmount = (feeAmount * 990) / 1000;
-        uint256 restrictedTokenAmount = 0;
-        uint256 ownerAmount = feeAmount - depositAmount - restrictedTokenAmount;
-
-        // Legacy: send to NFTStrategy (now disabled)
-        // INFTStrategy(collection).addFees{value: depositAmount}();
-        
-        if (restrictedTokenAmount > 0) {
-            SafeTransferLib.forceSafeTransferETH(address(nftStrategyFactory), restrictedTokenAmount);
-        }
-        
-        SafeTransferLib.forceSafeTransferETH(feeAddressClaimedByOwner[collection] == address(0) ? feeAddress : feeAddressClaimedByOwner[collection], ownerAmount);
-    }
-
     function calculateFee(address /*collection*/, bool /*isBuying*/) public view returns (uint128) {
         // Always return flat 15% fee for Rarity Town Protocol
         if(nftStrategyFactory.deployerBuying()) return 0;
         return FLAT_FEE;
-    }
-
-    // Legacy function kept for compatibility - now returns flat fee
-    function calculateFeeLegacy(address collection, bool isBuying) public view returns (uint128) {
-        if (!isBuying) return FLAT_FEE;
-        if(nftStrategyFactory.deployerBuying()) return 0;
-
-        uint256 deployedAt = deploymentBlock[collection];
-        if (deployedAt == 0) return FLAT_FEE;
-
-        uint256 blocksPassed = block.number - deployedAt;
-        uint256 feeReductions = (blocksPassed / 5) * 100;
-
-        uint256 maxReducible = 9500 - FLAT_FEE; // Using old STARTING_BUY_FEE logic
-        if (feeReductions >= maxReducible) return FLAT_FEE;
-
-        return uint128(9500 - feeReductions);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -654,8 +617,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
 
     function _swapToEth(PoolKey memory key, uint256 amount) internal returns (uint256) {
         uint256 ethBefore = address(this).balance;
-        Currency currency0 = key.currency0;
-        Currency currency1 = key.currency1;
         
         BalanceDelta delta = manager.swap(
             key,
@@ -667,18 +628,17 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             bytes("")
         );
 
-        int128 amount0Delta = delta.amount0();
-        if (amount0Delta < 0) {
-            currency0.settle(poolManager, address(this), uint256(uint128(-amount0Delta)), false);
-        } else if (amount0Delta > 0) {
-            currency0.take(poolManager, address(this), uint256(uint128(amount0Delta)), false);
+        // Handle token settlements
+        if (delta.amount0() < 0) {
+            key.currency0.settle(poolManager, address(this), uint256(int256(-delta.amount0())), false);
+        } else if (delta.amount0() > 0) {
+            key.currency0.take(poolManager, address(this), uint256(int256(delta.amount0())), false);
         }
 
-        int128 amount1Delta = delta.amount1();
-        if (amount1Delta < 0) {
-            currency1.settle(poolManager, address(this), uint256(uint128(-amount1Delta)), false);
-        } else if (amount1Delta > 0) {
-            currency1.take(poolManager, address(this), uint256(uint128(amount1Delta)), false);
+        if (delta.amount1() < 0) {
+            key.currency1.settle(poolManager, address(this), uint256(int256(-delta.amount1())), false);
+        } else if (delta.amount1() > 0) {
+            key.currency1.take(poolManager, address(this), uint256(int256(delta.amount1())), false);
         }
 
         return address(this).balance - ethBefore;

@@ -1,0 +1,47 @@
+{
+  "network": "base",
+  "description": "Deployment info for updated NFTStrategyHook and related contracts",
+  "configuration": {
+    "feeToLaunch": "20000000000000",
+    "feeToLaunchEth": "0.00002",
+    "publicLaunches": true,
+    "collectionOwnerLaunches": true
+  },
+  "contracts": {
+    "RestrictedToken": {
+      "address": "0xCD550Da2c63483A5b11193C7466c3D74f66f1cE4",
+      "basescanUrl": "https://basescan.org/address/0xCD550Da2c63483A5b11193C7466c3D74f66f1cE4"
+    },
+    "OpenSeaNFTBuyer": {
+      "address": "0xfc2cfbD6C807214e4456872f534332470D13Ce47",
+      "basescanUrl": "https://basescan.org/address/0xfc2cfbD6C807214e4456872f534332470D13Ce47"
+    },
+    "NFTStrategyFactory": {
+      "address": "0x65261dc59fb077fe13240057dF83513EBC5114eF",
+      "basescanUrl": "https://basescan.org/address/0x65261dc59fb077fe13240057dF83513EBC5114eF"
+    },
+    "NFTStrategyHookMiner": {
+      "address": "0x0201a74576F010236D765D1643D9aB236c312b3F",
+      "basescanUrl": "https://basescan.org/address/0x0201a74576F010236D765D1643D9aB236c312b3F"
+    },
+    "NFTStrategyHook": {
+      "address": "0x0E2f8735CC1b67Cab65E7E4e0EAE5e7e665228C4",
+      "basescanUrl": "https://basescan.org/address/0x0E2f8735CC1b67Cab65E7E4e0EAE5e7e665228C4"
+    },
+    "PoolManager": {
+      "address": "0x498581ff718922c3f8e6a244956af099b2652b2b",
+      "basescanUrl": "https://basescan.org/address/0x498581ff718922c3f8e6a244956af099b2652b2b"
+    },
+    "UniversalRouter": {
+      "address": "0x6ff5693b99212da76ad316178a184ab56d299b43",
+      "basescanUrl": "https://basescan.org/address/0x6ff5693b99212da76ad316178a184ab56d299b43"
+    },
+    "SwapRouter": {
+      "address": "0x00000000000044a361Ae3cAc094c9D1b14Eece97",
+      "basescanUrl": "https://basescan.org/address/0x00000000000044a361Ae3cAc094c9D1b14Eece97"
+    }
+  }
+}
+
+
+
