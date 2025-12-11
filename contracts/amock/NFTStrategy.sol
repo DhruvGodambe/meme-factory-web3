@@ -31,7 +31,8 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
     uint256 public currentFees;
     uint256 public ethToTwap;
     uint256 public twapIncrement = 1 ether;
-    uint256 public twapDelayInBlocks = 1;
+    uint256 public constant MIN_TWAP_DELAY_BLOCKS = 100;
+    uint256 public twapDelayInBlocks = MIN_TWAP_DELAY_BLOCKS;
     uint256 public lastTwapBlock;
     bool public midSwap;
 
@@ -56,6 +57,7 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
     error OnlyHook();
     error InvalidCollection();
     error ExternalCallFailed(bytes reason);
+    error TwapDelayTooLow();
 
     /*                     CONSTRUCTOR                     */
     
@@ -99,6 +101,12 @@ contract NFTStrategy is ERC20, ReentrancyGuard {
         if (msg.sender != factory) revert NotFactory();
         if (_newMultiplier < 1100 || _newMultiplier > 10000) revert InvalidMultiplier();
         priceMultiplier = _newMultiplier;
+    }
+
+    function updateTwapDelay(uint256 newDelay) external {
+        if (msg.sender != factory) revert NotFactory();
+        if (newDelay < MIN_TWAP_DELAY_BLOCKS) revert TwapDelayTooLow();
+        twapDelayInBlocks = newDelay;
     }
 
     /*                 MECHANISM FUNCTIONS                 */

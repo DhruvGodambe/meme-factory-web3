@@ -21,6 +21,9 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
 
     uint256 private constant ethToPair = 2 wei;
     uint256 private constant initialBuy = 10000000000000 wei;
+    uint256 private constant SLIPPAGE_BIPS_DENOM = 10_000;
+    uint256 private constant MAX_SLIPPAGE_BIPS = 2_000; // 20% max slippage tolerance
+    uint256 private constant MIN_TWAP_DELAY_BLOCKS = 100;
     IPositionManager private immutable posm;
     IAllowanceTransfer private immutable permit2;
     IUniswapV4Router04 private immutable router;
@@ -42,10 +45,11 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     bool public publicLaunches;
     bool public collectionOwnerLaunches;
     uint256 public twapIncrement = 1 ether;
-    uint256 public twapDelayInBlocks = 1;
+    uint256 public twapDelayInBlocks = MIN_TWAP_DELAY_BLOCKS;
     uint256 public lastTwapBlock;
     bool public routerRestrict;
     mapping(address => bool) public listOfRouters;
+    uint256 public slippageToleranceBips = 500; // 5%
 
     /*                    CUSTOM ERRORS                    */
 
@@ -57,6 +61,8 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     error CannotLaunch();
     error NoETHToTwap();
     error TwapDelayNotMet();
+    error TwapDelayTooLow();
+    error InvalidSlippage();
 
     /*                    CUSTOM EVENTS                    */
 
@@ -146,6 +152,16 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         INFTStrategy(nftStrategy).setPriceMultiplier(newMultiplier);
     }
 
+    function setSlippageTolerance(uint256 newSlippageBips) external onlyOwner {
+        if (newSlippageBips > MAX_SLIPPAGE_BIPS) revert InvalidSlippage();
+        slippageToleranceBips = newSlippageBips;
+    }
+
+    function updateTwapDelay(uint256 newDelay) external onlyOwner {
+        if (newDelay < MIN_TWAP_DELAY_BLOCKS) revert TwapDelayTooLow();
+        twapDelayInBlocks = newDelay;
+    }
+
     /*                  INTERNAL FUNCTIONS                 */
 
     function _loadLiquidity(address _token) internal {
@@ -210,6 +226,36 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         return (actions, params);
     }
 
+    function _validateERC721(address collection) internal view {
+        bool isSupported;
+        try IERC721(collection).supportsInterface(0x80ac58cd) returns (bool supported) {
+            isSupported = supported;
+        } catch {
+            revert NotERC721();
+        }
+        if (!isSupported) revert NotERC721();
+
+        try IERC721(collection).balanceOf(address(this)) returns (uint256) {
+            // balanceOf implemented correctly
+        } catch {
+            revert NotERC721();
+        }
+
+        // Optional structural integrity check (non-fatal if token supply absent)
+        try IERC721(collection).ownerOf(1) returns (address) {
+            // token exists
+        } catch {
+            // collection may have zero supply; ignore
+        }
+    }
+
+    function _calculateMinOutput(uint256 amountIn) internal view returns (uint256) {
+        if (slippageToleranceBips == 0 || amountIn == 0) return amountIn;
+        uint256 slippage = (amountIn * slippageToleranceBips) / SLIPPAGE_BIPS_DENOM;
+        if (slippage >= amountIn) return 0;
+        return amountIn - slippage;
+    }
+
     function _buyTokens(uint256 amountIn, address nftStrategy, address caller) internal {
         deployerBuying = true;
 
@@ -221,9 +267,11 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
             IHooks(hookAddress)
         );
 
+        uint256 minOutput = _calculateMinOutput(amountIn);
+
         router.swapExactTokensForTokens{value: amountIn}(
             amountIn,
-            0,
+            minOutput,
             true,
             key,
             "",
@@ -243,9 +291,11 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
             IHooks(restrictedTokenHookAddress)
         );
 
+        uint256 minOutput = _calculateMinOutput(amountIn);
+
         router.swapExactTokensForTokens{value: amountIn}(
             amountIn,
-            0,
+            minOutput,
             true,
             key,
             "",
@@ -299,7 +349,9 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         if (msg.value != feeToLaunch) revert WrongEthAmount();
         if (!publicLaunches && !collectionOwnerLaunches) revert CannotLaunch();
 
-        if (!IERC721(collection).supportsInterface(0x80ac58cd) && msg.sender != owner()) revert NotERC721();
+        if (msg.sender != owner()) {
+            _validateERC721(collection);
+        }
 
         address collectionOwnerFromContract;
         try IERC721(collection).owner() returns (address owner) {
@@ -377,5 +429,10 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         return true;
     }
 
-    receive() external payable {}
+    receive() external payable {
+        require(
+            msg.sender == address(router) || msg.sender == address(posm) || msg.sender == owner(),
+            "Unauthorized"
+        );
+    }
 }
