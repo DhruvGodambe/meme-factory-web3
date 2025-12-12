@@ -51,7 +51,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     address public brandAssetToken;
     address public brandAssetHook;
     bool public brandAssetEnabled;
-    bool public buyBackAndBurnEnabled;
     address payable public routerAddress;
     address public openSeaBuyer;
     
@@ -165,13 +164,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         brandAssetToken = _brandAssetToken;
         brandAssetHook = _brandAssetHook;
         brandAssetEnabled = _enabled;
-        buyBackAndBurnEnabled = _enabled;
-    }
-
-    /// @notice Toggle buyback-and-burn behavior without touching asset configuration
-    /// @param _enabled Whether the buyback flow should be active
-    function setBuyBackAndBurnEnabled(bool _enabled) external onlyOwnerOrAuthorized {
-        buyBackAndBurnEnabled = _enabled;
     }
 
     /*               HOT WALLET SYSTEM FUNCTIONS           */
@@ -447,8 +439,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         if (feeAmount == 0) return;
         
         // Manual mode: Admin must manage FeeContracts off-chain
-        uint256 vaultAmount = (feeAmount * FEE_CONTRACT_SHARE_BIPS) / TOTAL_BIPS;
-        uint256 remainder = feeAmount - vaultAmount;
+        uint256 vaultAmount = (feeAmount * FEE_CONTRACT_SHARE_BIPS) / TOTAL_BIPS; // 93.33%
+        uint256 remainder = feeAmount - vaultAmount; // 6.66%
         bool vaultFunded;
 
         address activeVault = activeFeeContract[rarityToken];
@@ -465,22 +457,21 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             return;
         }
 
-        uint256 founderAmount = (remainder * FOUNDER_REMAINDER_SHARE_BIPS) / TOTAL_BIPS;
-        uint256 buyBackAmount = remainder - founderAmount;
+        uint256 founderAmount = (remainder * FOUNDER_REMAINDER_SHARE_BIPS) / TOTAL_BIPS; // 25%
+        uint256 buyBackAmount = remainder - founderAmount; // 75%
         
         if (founderAmount > 0) {
             address destination = feeAddressClaimedByOwner[rarityToken];
             if (destination == address(0)) {
                 destination = founderWallet1 != address(0) ? founderWallet1 : feeAddress;
-            }
-            if (destination != address(0)) {
+
+            } else {
                 SafeTransferLib.forceSafeTransferETH(destination, founderAmount);
             }
         }
         
         if (buyBackAmount > 0) {
             if (
-                buyBackAndBurnEnabled &&
                 brandAssetEnabled &&
                 brandAssetToken != address(0) &&
                 brandAssetHook != address(0)

@@ -249,6 +249,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         }
     }
 
+    // 0.01 WETH => 1000 PEPE
     function _calculateMinOutput(uint256 amountIn) internal view returns (uint256) {
         if (slippageToleranceBips == 0 || amountIn == 0) return amountIn;
         uint256 slippage = (amountIn * slippageToleranceBips) / SLIPPAGE_BIPS_DENOM;

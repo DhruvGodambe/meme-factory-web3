@@ -8,9 +8,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
-import {NFTStrategyHook} from "./amock/NFTStrategyHook.sol";
+import {NFTStrategyHook} from "./v1/NFTStrategyHook.sol";
 import {RestrictedToken} from "./RestrictedToken.sol";
-import "./amock/Interfaces.sol";
+import "./v1/Interfaces.sol";
 
 /**
  * @title NFTStrategyHookMiner
