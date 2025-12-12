@@ -20,6 +20,7 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import "./Interfaces.sol";
 import "./FeeContract.sol";
+import "./IUniswapV4Router04.sol";
 
 /// @title NFTStrategyHook - Uniswap V4 Hook for NFTStrategy
 contract NFTStrategyHook is BaseHook, ReentrancyGuard {
@@ -160,9 +161,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         return founderWallet2;
     }
 
-    function setBrandAsset(address _brandAssetToken, address _brandAssetHook, bool _enabled) external onlyOwnerOrAuthorized {
+    function setBrandAsset(address _brandAssetToken, bool _enabled) external onlyOwnerOrAuthorized {
         brandAssetToken = _brandAssetToken;
-        brandAssetHook = _brandAssetHook;
         brandAssetEnabled = _enabled;
     }
 
@@ -473,8 +473,7 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         if (buyBackAmount > 0) {
             if (
                 brandAssetEnabled &&
-                brandAssetToken != address(0) &&
-                brandAssetHook != address(0)
+                brandAssetToken != address(0)
             ) {
                 _buyAndBurnBrandAsset(buyBackAmount);
             } else {
@@ -486,13 +485,33 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         }
     }
 
+    /// @notice Buys brand asset token with ETH and burns it by sending to dead address
+    /// @param amountIn The amount of ETH to spend on tokens that will be burned
+    /// @dev Only executes when brandAssetEnabled is true (checked in _processFees)
+    /// @dev This burns 75% of 6.66% of 15% = 0.74925% of total swap amount
     function _buyAndBurnBrandAsset(uint256 amountIn) internal {
-        if (brandAssetToken == address(0) || brandAssetHook == address(0)) return;
+        if (brandAssetToken == address(0) || routerAddress == address(0)) return;
         
-        // Use router to buy and send to dead address
-        // Note: This would need the router interface - keeping simple for now
-        // Future implementation would create PoolKey and use router for actual swap
-        SafeTransferLib.forceSafeTransferETH(address(0x000000000000000000000000000000000000dEaD), amountIn);
+        // Create PoolKey for ETH -> brandAssetToken swap (no hook needed)
+        PoolKey memory poolKey = PoolKey(
+            Currency.wrap(address(0)), // currency0 = ETH
+            Currency.wrap(brandAssetToken), // currency1 = brandAssetToken
+            0, // fee tier
+            60, // tickSpacing
+            IHooks(address(0)) // no hook needed for this swap
+        );
+        
+        // Swap ETH for brandAssetToken and send directly to dead address (burn)
+        // zeroForOne = true means swapping currency0 (ETH) for currency1 (token)
+        IUniswapV4Router04(routerAddress).swapExactTokensForTokens{value: amountIn}(
+            amountIn,
+            0, // amountOutMin - accept any amount of tokens
+            true, // zeroForOne - swap ETH for token
+            poolKey,
+            "", // hookData - empty for this swap
+            0x000000000000000000000000000000000000dEaD, // receiver - send tokens to dead address to burn
+            block.timestamp // deadline
+        );
     }
 
     function calculateFee(address /*collection*/, bool /*isBuying*/) public view returns (uint128) {

@@ -46,11 +46,11 @@ async function main() {
 
   // ---- EXISTING CORE ADDRESSES (FILL THESE IN) ----
   // PoolManager and Router are the same regardless of the hook change.
-  const POOL_MANAGER = "0x498581ff718922c3f8e6a244956af099b2652b2b";
-  const POSITION_MANAGER = "0x7c5f5a4bbd8fd63184577525326123b519429bdc";
-  const UNIVERSAL_ROUTER = "0x6ff5693b99212da76ad316178a184ab56d299b43";
-  const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-  const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
+  const POOL_MANAGER = constants.base.POOL_MANAGER;
+  const POSITION_MANAGER = constants.base.POSITION_MANAGER;
+  const UNIVERSAL_ROUTER = constants.base.UNIVERSAL_ROUTER;
+  const PERMIT2 = constants.base.PERMIT2;
+  const ROUTER = constants.base.ROUTER;
 
   // If you already have these from a previous deployment, set them here;
   // otherwise leave as ZeroAddress to deploy fresh ones.
