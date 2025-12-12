@@ -1,6 +1,7 @@
 import { ethers } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { wireHookAndVerify } from "./wire-hook-and-verify";
+import constants from "./constants.json";
 
 /**
  * Minimal deployment script to:
