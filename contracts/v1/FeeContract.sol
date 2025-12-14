@@ -177,8 +177,7 @@ contract FeeContract is ReentrancyGuard {
     function buyTargetNFT(
         uint256 value,
         bytes calldata data,
-        uint256 expectedId,
-        address target
+        uint256 expectedId
     ) external nonReentrant {
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
         if (collection.ownerOf(expectedId) == address(this)) revert AlreadyNFTOwner();
@@ -187,7 +186,8 @@ contract FeeContract is ReentrancyGuard {
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        (bool success, bytes memory reason) = target.call{value: value}(data);
+        // Hardcode target to trusted collection address
+        (bool success, bytes memory reason) = address(collection).call{value: value}(data);
         if (!success) revert ExternalCallFailed(reason);
 
         _completePurchase(expectedId, ethBalanceBefore, nftBalanceBefore);

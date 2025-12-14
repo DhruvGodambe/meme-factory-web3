@@ -4,19 +4,34 @@ pragma solidity ^0.8.21;
 import {Ownable} from "solady/src/auth/Ownable.sol";
 import {NFTStrategy} from "./NFTStrategy.sol";
 import {SafeTransferLib} from "solady/src/utils/SafeTransferLib.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IAllowanceTransfer} from "@uniswap/v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import "./Interfaces.sol";
 import {ReentrancyGuard} from "solady/src/utils/ReentrancyGuard.sol";
 
+interface IPoolManagerOracle is IPoolManager {
+    function observe(PoolKey memory key, uint32[] calldata secondsAgos)
+        external
+        view
+        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s);
+}
+
 /// @title NFTStrategyFactory
 contract NFTStrategyFactory is Ownable, ReentrancyGuard {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
+
     /*                       CONSTANTS                      */
 
     uint256 private constant ethToPair = 2 wei;
@@ -27,7 +42,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     IPositionManager private immutable posm;
     IAllowanceTransfer private immutable permit2;
     IUniswapV4Router04 private immutable router;
-    address private immutable poolManager;
+    IPoolManagerOracle public immutable poolManager;
 
     address public restrictedTokenAddress;
     address public restrictedTokenHookAddress;
@@ -50,6 +65,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     bool public routerRestrict;
     mapping(address => bool) public listOfRouters;
     uint256 public slippageToleranceBips = 500; // 5%
+    uint256 public launchSlippageBps = 500; // 5% default for launch buys
 
     /*                    CUSTOM ERRORS                    */
 
@@ -88,7 +104,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         router = IUniswapV4Router04(_router);
         posm = IPositionManager(_posm);
         permit2 = IAllowanceTransfer(_permit2);
-        poolManager = _poolManager;
+        poolManager = IPoolManagerOracle(_poolManager);
         restrictedTokenAddress = _restrictedTokenAddress;
         restrictedTokenHookAddress = _restrictedTokenHookAddress;
 
@@ -97,6 +113,7 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         listOfRouters[_permit2] = true;
         listOfRouters[_router] = true;
         listOfRouters[_universalRouter] = true;
+        listOfRouters[_poolManager] = true;
         listOfRouters[DEADADDRESS] = true;
 
         routerRestrict = true;
@@ -155,6 +172,11 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
     function setSlippageTolerance(uint256 newSlippageBips) external onlyOwner {
         if (newSlippageBips > MAX_SLIPPAGE_BIPS) revert InvalidSlippage();
         slippageToleranceBips = newSlippageBips;
+    }
+
+    function setLaunchSlippage(uint256 newSlippageBps) external onlyOwner {
+        require(newSlippageBps <= 1000, "Max 10%");
+        launchSlippageBps = newSlippageBps;
     }
 
     function updateTwapDelay(uint256 newDelay) external onlyOwner {
@@ -249,12 +271,13 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         }
     }
 
-    // 0.01 WETH => 1000 PEPE
-    function _calculateMinOutput(uint256 amountIn) internal view returns (uint256) {
-        if (slippageToleranceBips == 0 || amountIn == 0) return amountIn;
-        uint256 slippage = (amountIn * slippageToleranceBips) / SLIPPAGE_BIPS_DENOM;
-        if (slippage >= amountIn) return 0;
-        return amountIn - slippage;
+    function _calculateExpectedOutput(PoolKey memory key, uint256 amountIn) internal view returns (uint256) {
+        (uint160 sqrtPriceX96,,,) = IPoolManager(poolManager).getSlot0(key.toId());
+        return FullMath.mulDiv(
+            amountIn,
+            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
+            FixedPoint96.Q96 * FixedPoint96.Q96
+        );
     }
 
     function _buyTokens(uint256 amountIn, address nftStrategy, address caller) internal {
@@ -268,7 +291,8 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
             IHooks(hookAddress)
         );
 
-        uint256 minOutput = _calculateMinOutput(amountIn);
+        uint256 expectedOutput = _calculateExpectedOutput(key, amountIn);
+        uint256 minOutput = (expectedOutput * (SLIPPAGE_BIPS_DENOM - launchSlippageBps)) / SLIPPAGE_BIPS_DENOM;
 
         router.swapExactTokensForTokens{value: amountIn}(
             amountIn,
@@ -283,7 +307,9 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
         deployerBuying = false;
     }
 
-    function _buyAndBurnRestrictedToken(uint256 amountIn) internal {
+    function _buyAndBurnRestrictedToken(uint256 amountIn) internal returns (uint256) {
+        uint256 rarityBalanceBefore = IERC20(restrictedTokenAddress).balanceOf(DEADADDRESS);
+
         PoolKey memory key = PoolKey(
             Currency.wrap(address(0)),
             Currency.wrap(restrictedTokenAddress),
@@ -292,17 +318,53 @@ contract NFTStrategyFactory is Ownable, ReentrancyGuard {
             IHooks(restrictedTokenHookAddress)
         );
 
-        uint256 minOutput = _calculateMinOutput(amountIn);
+        // 30-minute TWAP window, 5% slippage tolerance (500 bps)
+        uint256 minAmountOut = _getMinAmountOut(key, amountIn, 30 minutes, 500);
 
         router.swapExactTokensForTokens{value: amountIn}(
             amountIn,
-            minOutput,
+            minAmountOut, // Protected by TWAP
             true,
             key,
             "",
             DEADADDRESS,
             block.timestamp
         );
+
+        return IERC20(restrictedTokenAddress).balanceOf(DEADADDRESS) - rarityBalanceBefore;
+    }
+
+    function _getMinAmountOut(
+        PoolKey memory key,
+        uint256 amountIn,
+        uint32 twapWindow,
+        uint256 slippageBps
+    ) internal view returns (uint256) {
+        // Define the time range (now, and twapWindow seconds ago)
+        uint32[] memory secondsAgos = new uint32[](2);
+        secondsAgos[0] = twapWindow; // twapWindow seconds ago
+        secondsAgos[1] = 0; // Now
+
+        // Get the arithmetic mean tick from the oracle
+        // NOTE: pool must have Oracle flag initialized
+        (int56[] memory tickCumulatives, ) = poolManager.observe(key, secondsAgos);
+
+        int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
+        int24 arithmeticMeanTick = int24(tickCumulativesDelta / int56(uint56(twapWindow)));
+
+        // Calculate sqrtPrice from the mean tick
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(arithmeticMeanTick);
+
+        // Calculate expected amount out
+        // For Token0 (ETH) -> Token1 (rarity) swap: AmountOut = AmountIn * (Price)^2
+        uint256 expectedOut = FullMath.mulDiv(
+            amountIn,
+            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
+            FixedPoint96.Q96 * FixedPoint96.Q96
+        );
+
+        // Apply slippage tolerance
+        return (expectedOut * (10_000 - slippageBps)) / 10_000;
     }
 
     /*                    USER FUNCTIONS                   */

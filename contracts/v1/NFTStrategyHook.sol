@@ -628,8 +628,6 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     }
 
     function _swapToEth(PoolKey memory key, uint256 amount) internal returns (uint256) {
-        uint256 ethBefore = address(this).balance;
-        
         BalanceDelta delta = manager.swap(
             key,
             SwapParams({
@@ -640,20 +638,25 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             bytes("")
         );
 
-        // Handle token settlements
-        if (delta.amount0() < 0) {
+        uint256 ethReceived = 0;
+
+        // Process token0 (ETH)
+        if (delta.amount0() > 0) {
+            ethReceived = uint256(int256(delta.amount0()));
+            key.currency0.take(poolManager, address(this), ethReceived, false);
+        } else if (delta.amount0() < 0) {
             key.currency0.settle(poolManager, address(this), uint256(int256(-delta.amount0())), false);
-        } else if (delta.amount0() > 0) {
-            key.currency0.take(poolManager, address(this), uint256(int256(delta.amount0())), false);
         }
 
+        // Process token1 (rarity token)
         if (delta.amount1() < 0) {
-            key.currency1.settle(poolManager, address(this), uint256(int256(-delta.amount1())), false);
+            uint256 amountToPay = uint256(int256(-delta.amount1()));
+            key.currency1.settle(poolManager, address(this), amountToPay, false);
         } else if (delta.amount1() > 0) {
             key.currency1.take(poolManager, address(this), uint256(int256(delta.amount1())), false);
         }
 
-        return address(this).balance - ethBefore;
+        return ethReceived;
     }
 
     function _getCurrentPrice(PoolKey calldata key) internal view returns (uint160) {
