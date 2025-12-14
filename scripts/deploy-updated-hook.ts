@@ -85,25 +85,31 @@ async function main() {
       ? EXISTING_OPEN_SEA_BUYER
       : await deployContract("OpenSeaNFTBuyer");
 
+  // NFTStrategyFactory constructor (posm, permit2, poolManager, universalRouter, router, feeAddress, restrictedToken, restrictedTokenHook)
+  const factoryArgs = [
+    POSITION_MANAGER,
+    PERMIT2,
+    POOL_MANAGER,
+    UNIVERSAL_ROUTER,
+    ROUTER,
+    FEE_ADDRESS,
+    restrictedTokenAddress,
+    ethers.ZeroAddress, // restrictedTokenHookAddress set after hook deployment
+  ];
+
   const factoryAddress =
     EXISTING_FACTORY !== ethers.ZeroAddress
       ? EXISTING_FACTORY
-      : await deployContract("NFTStrategyFactory", [
-          POSITION_MANAGER,
-          PERMIT2,
-          POOL_MANAGER,
-          UNIVERSAL_ROUTER,
-          ROUTER,
-          FEE_ADDRESS,
-          restrictedTokenAddress,
-          ethers.ZeroAddress, // restrictedTokenHookAddress set later
-        ]);
+      : await deployContract("NFTStrategyFactory", factoryArgs);
 
   // --- STEP 2: Ensure HookMiner exists ---
+  // NFTStrategyHookMiner constructor (poolManager, treasury/feeAddress)
+  const hookMinerArgs = [POOL_MANAGER, FEE_ADDRESS];
+
   const hookMinerAddress =
     EXISTING_HOOK_MINER !== ethers.ZeroAddress
       ? EXISTING_HOOK_MINER
-      : await deployContract("NFTStrategyHookMiner", [POOL_MANAGER, FEE_ADDRESS]);
+      : await deployContract("NFTStrategyHookMiner", hookMinerArgs);
 
   const hookMiner = await ethers.getContractAt("NFTStrategyHookMiner", hookMinerAddress);
 
