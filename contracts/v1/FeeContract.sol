@@ -429,5 +429,27 @@ contract FeeContract is ReentrancyGuard {
         SafeTransferLib.forceSafeTransferETH(msg.sender, address(this).balance);
     }
 
+    /// @notice Reject any ERC1155 token transfers (prevents unintended airdrops)
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        revert InvalidCollection();
+    }
+
+    /// @notice Reject any batch ERC1155 token transfers (prevents unintended airdrops)
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        revert InvalidCollection();
+    }
+
     receive() external payable {}
 }
