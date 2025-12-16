@@ -106,17 +106,38 @@ async function main() {
   // NFTStrategyHookMiner constructor (poolManager, treasury/feeAddress)
   const hookMinerArgs = [POOL_MANAGER, FEE_ADDRESS];
 
-  const hookMinerAddress =
-    EXISTING_HOOK_MINER !== ethers.ZeroAddress
-      ? EXISTING_HOOK_MINER
-      : await deployContract("NFTStrategyHookMiner", hookMinerArgs);
+  // Helper to ensure a valid HookMiner address (has code and decodes ABI)
+  async function ensureHookMiner(): Promise<string> {
+    if (EXISTING_HOOK_MINER !== ethers.ZeroAddress) {
+      const code = await ethers.provider.getCode(EXISTING_HOOK_MINER);
+      if (code && code !== "0x") {
+        return EXISTING_HOOK_MINER;
+      }
+      console.warn(
+        `⚠️ EXISTING_HOOK_MINER has no code on-chain (${EXISTING_HOOK_MINER}); redeploying fresh miner.`
+      );
+    }
+    return await deployContract("NFTStrategyHookMiner", hookMinerArgs);
+  }
 
-  const hookMiner = await ethers.getContractAt("NFTStrategyHookMiner", hookMinerAddress);
+  let hookMinerAddress = await ensureHookMiner();
+  let hookMiner = await ethers.getContractAt("NFTStrategyHookMiner", hookMinerAddress);
 
   // --- STEP 3: Mine/store salt and deploy new hook ---
   console.log("\n=== Salt Simulation + Hook Deployment ===");
 
-  const [existingHook, existingSalt, isMined] = await hookMiner.getMinedData();
+  async function getMinedDataSafe() {
+    try {
+      return await hookMiner.getMinedData();
+    } catch (err: any) {
+      console.warn("⚠️ getMinedData() failed, redeploying fresh HookMiner...");
+      hookMinerAddress = await deployContract("NFTStrategyHookMiner", hookMinerArgs);
+      hookMiner = await ethers.getContractAt("NFTStrategyHookMiner", hookMinerAddress);
+      return await hookMiner.getMinedData();
+    }
+  }
+
+  const [existingHook, existingSalt, isMined] = await getMinedDataSafe();
   let finalHookAddr: string;
   let finalSalt: string;
 
