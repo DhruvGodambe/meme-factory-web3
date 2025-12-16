@@ -33,7 +33,8 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
     /*                      CONSTANTS                      */
 
     uint128 private constant TOTAL_BIPS = 10000;
-    uint128 private constant FLAT_FEE = 1500; // 15% flat fee
+    uint128 private constant FLAT_FEE = 1500; // 15% baseline fee (default)
+    uint128 private constant STARTING_BUY_FEE = 9500; // 95% initial buy fee, decays to FLAT_FEE
     uint128 private constant FEE_CONTRACT_SHARE_BIPS = 9333; // 93.33% of collected hook fee amount
     uint128 private constant FOUNDER_REMAINDER_SHARE_BIPS = 2500; // 25% of the 6.66% remainder
     uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
@@ -514,10 +515,25 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         );
     }
 
-    function calculateFee(address /*collection*/, bool /*isBuying*/) public view returns (uint128) {
-        // Always return flat 15% fee for Rarity Town Protocol
-        if(nftStrategyFactory.deployerBuying()) return 0;
-        return FLAT_FEE;
+    function calculateFee(address collection, bool isBuying) public view returns (uint128) {
+        // Sell path: flat fee
+        if (!isBuying) return FLAT_FEE;
+
+        // Deployer's own buys are free
+        if (nftStrategyFactory.deployerBuying()) return 0;
+
+        uint256 deployedAt = deploymentBlock[collection];
+        if (deployedAt == 0) return FLAT_FEE;
+
+        uint256 blocksPassed = block.number - deployedAt;
+        uint256 feeReductions = (blocksPassed / 5) * 100; // 100 bps every 5 blocks
+        uint256 maxReducible = STARTING_BUY_FEE - FLAT_FEE;
+
+        if (feeReductions >= maxReducible) {
+            return FLAT_FEE;
+        }
+
+        return uint128(STARTING_BUY_FEE - feeReductions);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
