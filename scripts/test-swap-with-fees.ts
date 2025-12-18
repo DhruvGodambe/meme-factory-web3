@@ -35,9 +35,9 @@ async function main() {
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
 
   // Contract addresses (update these to match your deployment)
-  const FACTORY = "0x6E4Eef9b5ff69E7c22bB5EAD0a7dCc62ad567039";
-  const HOOK = "0x5DB041c70Af719EB8A6B23654006cc8D9E5628C4";
-  const RESTRICTED_TOKEN = "0x11bd3952C622D69551DcE28b5b9769CA39c88dBc";
+  const FACTORY = "0x1F649F2EC09b7814D313d12AC7DfC12F84412e99";
+  const HOOK = "0x9c3fb59C7a27a8d141A5E3a664ece6798eaB28c4";
+  const RESTRICTED_TOKEN = "0x556f013930CdE5A5D64f352FbC13a4051d80205C";
   const OPEN_SEA_BUYER = "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c";
 
   console.log("📋 Contract Addresses:");
