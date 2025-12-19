@@ -24,6 +24,8 @@ contract FeeContract is ReentrancyGuard {
     uint256 public constant MAX_NFTS = 5;
     uint256 public constant TWAP_INCREMENT = 1 ether;
     uint256 public constant TWAP_DELAY_BLOCKS = 1;
+    /// @notice Hardcoded Seaport/Opensea protocol address used for direct buys
+    address public constant OPENSEA_PROTOCOL = 0x0000000000000068F116a894984e2DB1123eB395;
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     
     IUniswapV4Router04 private immutable router;
@@ -186,8 +188,8 @@ contract FeeContract is ReentrancyGuard {
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        // Hardcode target to trusted collection address
-        (bool success, bytes memory reason) = address(collection).call{value: value}(data);
+        // Hardcode target to the Seaport protocol address used by off-chain caller
+        (bool success, bytes memory reason) = OPENSEA_PROTOCOL.call{value: value}(data);
         if (!success) revert ExternalCallFailed(reason);
 
         _completePurchase(expectedId, ethBalanceBefore, nftBalanceBefore);
