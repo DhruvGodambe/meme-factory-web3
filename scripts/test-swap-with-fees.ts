@@ -7,7 +7,7 @@ const TEST_COLLECTION =
     ? process.env.TEST_COLLECTION
     : "0x25b2ed7149fb8a05f6ef9407d9c8f878f59cd1e1";
 
-const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.0003");
+const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.000003");
 const FEE_TEST_AMOUNT_WEI = parseEtherAmount(process.env.FEE_TEST_AMOUNT_ETH, "0.1");
 const GAS_BUMP_PERCENT = clampPercent(process.env.GAS_BUMP_PERCENT, 25);
 
@@ -35,10 +35,10 @@ async function main() {
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
 
   // Contract addresses (update these to match your deployment)
-  const FACTORY = "0x1F649F2EC09b7814D313d12AC7DfC12F84412e99";
-  const HOOK = "0x9c3fb59C7a27a8d141A5E3a664ece6798eaB28c4";
-  const RESTRICTED_TOKEN = "0x556f013930CdE5A5D64f352FbC13a4051d80205C";
-  const OPEN_SEA_BUYER = "0x1df4E3643Dc9119Df655a0BfA9502AB9FaA6356c";
+  const FACTORY = "0x7C006F83f8539801220beEa30DFF1518082138ab";
+  const HOOK = "0x008C6209c47692d504aA2652fCd0710883B568C4";
+  const RESTRICTED_TOKEN = "0x12D4C7AA8a74138dd812F1F3466453c7d90c4cA0";
+  const OPEN_SEA_BUYER = "0xd2c43F163701B1f7E422F956bA712541C1192B55";
 
   console.log("📋 Contract Addresses:");
   console.log(`  Factory: ${FACTORY}`);
