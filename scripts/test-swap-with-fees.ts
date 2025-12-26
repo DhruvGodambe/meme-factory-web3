@@ -5,9 +5,9 @@ import type { Contract, Signer } from "ethers";
 const TEST_COLLECTION =
   process.env.TEST_COLLECTION && process.env.TEST_COLLECTION !== ""
     ? process.env.TEST_COLLECTION
-    : "0x25b2ed7149fb8a05f6ef9407d9c8f878f59cd1e1";
+    : "0x18bf3ba9d8b067cc04d4ff500fe7100d452da9ff";
 
-const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.000003");
+const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.0003");
 const FEE_TEST_AMOUNT_WEI = parseEtherAmount(process.env.FEE_TEST_AMOUNT_ETH, "0.1");
 const GAS_BUMP_PERCENT = clampPercent(process.env.GAS_BUMP_PERCENT, 25);
 
