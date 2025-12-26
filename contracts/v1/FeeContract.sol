@@ -24,8 +24,6 @@ contract FeeContract is ReentrancyGuard {
     uint256 public constant MAX_NFTS = 5;
     uint256 public constant TWAP_INCREMENT = 1 ether;
     uint256 public constant TWAP_DELAY_BLOCKS = 1;
-    /// @notice Hardcoded Seaport/Opensea protocol address used for direct buys
-    address public constant OPENSEA_PROTOCOL = 0x0000000000000068F116a894984e2DB1123eB395;
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     
     IUniswapV4Router04 private immutable router;
@@ -175,12 +173,14 @@ contract FeeContract is ReentrancyGuard {
         _completePurchase(purchaseTokenId, ethBalanceBefore, nftBalanceBefore);
     }
 
-    /// @notice Buy an NFT using collected fees
+    /// @notice Buy an NFT using collected fees (supports custom target like Seaport or previous FeeContract)
     function buyTargetNFT(
         uint256 value,
+        address target,
         bytes calldata data,
         uint256 expectedId
     ) external nonReentrant {
+        if (target == address(0)) revert InvalidCollection(); // reuse existing error for invalid target
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
         if (collection.ownerOf(expectedId) == address(this)) revert AlreadyNFTOwner();
         if (value > currentFees) revert NotEnoughEth();
@@ -188,8 +188,7 @@ contract FeeContract is ReentrancyGuard {
         uint256 ethBalanceBefore = address(this).balance;
         uint256 nftBalanceBefore = collection.balanceOf(address(this));
 
-        // Hardcode target to the Seaport protocol address used by off-chain caller
-        (bool success, bytes memory reason) = OPENSEA_PROTOCOL.call{value: value}(data);
+        (bool success, bytes memory reason) = target.call{value: value}(data);
         if (!success) revert ExternalCallFailed(reason);
 
         _completePurchase(expectedId, ethBalanceBefore, nftBalanceBefore);
