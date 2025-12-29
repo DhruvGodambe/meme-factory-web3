@@ -5,9 +5,9 @@ import type { Contract, Signer } from "ethers";
 const TEST_COLLECTION =
   process.env.TEST_COLLECTION && process.env.TEST_COLLECTION !== ""
     ? process.env.TEST_COLLECTION
-    : "0x18bf3ba9d8b067cc04d4ff500fe7100d452da9ff";
+    : "0x25b2ed7149fb8a05f6ef9407d9c8f878f59cd1e1";
 
-const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.0003");
+const DEFAULT_SWAP_AMOUNT_WEI = parseEtherAmount(process.env.SWAP_AMOUNT_ETH, "0.0002");
 const FEE_TEST_AMOUNT_WEI = parseEtherAmount(process.env.FEE_TEST_AMOUNT_ETH, "0.1");
 const GAS_BUMP_PERCENT = clampPercent(process.env.GAS_BUMP_PERCENT, 25);
 
@@ -35,9 +35,9 @@ async function main() {
   const ROUTER = "0x00000000000044a361Ae3cAc094c9D1b14Eece97";
 
   // Contract addresses (update these to match your deployment)
-  const FACTORY = "0x7C006F83f8539801220beEa30DFF1518082138ab";
-  const HOOK = "0x008C6209c47692d504aA2652fCd0710883B568C4";
-  const RESTRICTED_TOKEN = "0x12D4C7AA8a74138dd812F1F3466453c7d90c4cA0";
+  const FACTORY = "0xB03C4367814058f8643A53A8Ed1A0884633180EB";
+  const HOOK = "0x9c754DD8Fa7f32847Ef0505a7C120C99C11828C4";
+  const RESTRICTED_TOKEN = "0xa81aF0CD9Aa0576066C2EAf636F698C5fB241CFB";
   const OPEN_SEA_BUYER = "0xd2c43F163701B1f7E422F956bA712541C1192B55";
 
   console.log("📋 Contract Addresses:");
