@@ -8,6 +8,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IUniswapV4Router04} from "./IUniswapV4Router04.sol";
 import "./Interfaces.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 interface IOpenSeaNFTBuyer {
     function buyNFTBasic(BasicOrderParameters calldata parameters) external payable;
@@ -27,7 +29,11 @@ contract FeeContract is ReentrancyGuard {
     address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     
     IUniswapV4Router04 private immutable router;
-    IERC721 public immutable collection;
+    // Collection can be ERC721 or ERC1155 (detected via ERC165)
+    address public immutable collection;
+    bool public immutable isERC1155;
+    IERC721 public immutable collection721;
+    IERC1155 public immutable collection1155;
     address public immutable rarityToken;
     address public immutable hookAddress;
     address public immutable factory;
@@ -81,7 +87,17 @@ contract FeeContract is ReentrancyGuard {
         factory = _factory;
         hookAddress = _hook;
         router = _router;
-        collection = IERC721(_collection);
+        collection = _collection;
+        bool erc1155 = false;
+        // Detect ERC1155 support via ERC165; default to ERC721 if detection fails.
+        try IERC165(_collection).supportsInterface(0xd9b67a26) returns (bool ok) {
+            erc1155 = ok;
+        } catch {
+            erc1155 = false;
+        }
+        isERC1155 = erc1155;
+        collection721 = erc1155 ? IERC721(address(0)) : IERC721(_collection);
+        collection1155 = erc1155 ? IERC1155(_collection) : IERC1155(address(0));
         rarityToken = _rarityToken;
         openSeaBuyer = IOpenSeaNFTBuyer(_openSeaBuyer);
     }
@@ -125,53 +141,7 @@ contract FeeContract is ReentrancyGuard {
 
     /*                 NFT TRADING FUNCTIONS               */
 
-    /// @notice Smart buy function that chooses between OpenSea and previous FeeContract
-    function smartBuyNFT(
-        address previousFeeContract,
-        BasicOrderParameters calldata openSeaOrder
-    ) external nonReentrant {
-        address collectionAddress = address(collection);
-        bool openSeaAvailable = openSeaOrder.offerToken == collectionAddress;
-
-        if (previousFeeContract == address(0)) {
-            if (!openSeaAvailable) revert InvalidCollection();
-            _executeOpenSeaPurchase(openSeaOrder, _calculateOpenSeaOrderTotal(openSeaOrder));
-            return;
-        }
-
-        uint256 tokenId = openSeaOrder.offerIdentifier;
-        if (currentHoldings >= MAX_NFTS) revert ContractFull();
-        if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
-
-        (uint256 feeContractFloorPrice, uint256 feeContractTokenId) = _getFloorPrice(previousFeeContract);
-        uint256 openSeaPrice;
-        if (openSeaAvailable) {
-            openSeaPrice = _calculateOpenSeaOrderTotal(openSeaOrder);
-        }
-
-        bool buyFromFeeContract = feeContractFloorPrice > 0 &&
-            (!openSeaAvailable || feeContractFloorPrice < openSeaPrice);
-
-        if (!buyFromFeeContract && !openSeaAvailable) revert NFTNotForSale();
-
-        uint256 purchasePrice = buyFromFeeContract ? feeContractFloorPrice : openSeaPrice;
-        uint256 purchaseTokenId = buyFromFeeContract ? feeContractTokenId : tokenId;
-
-        if (purchasePrice == 0) revert NFTNotForSale();
-        if (purchasePrice > currentFees) revert NotEnoughEth();
-
-        uint256 ethBalanceBefore = address(this).balance;
-        uint256 nftBalanceBefore = collection.balanceOf(address(this));
-
-        if (buyFromFeeContract) {
-            IFeeContract(previousFeeContract).sellTargetNFT{value: purchasePrice}(purchaseTokenId);
-        } else {
-            _executeOpenSeaPurchase(openSeaOrder, purchasePrice);
-            return;
-        }
-
-        _completePurchase(purchaseTokenId, ethBalanceBefore, nftBalanceBefore);
-    }
+    
 
     /// @notice Buy an NFT using collected fees (supports custom target like Seaport or previous FeeContract)
     function buyTargetNFT(
@@ -182,16 +152,22 @@ contract FeeContract is ReentrancyGuard {
     ) external nonReentrant {
         if (target == address(0)) revert InvalidCollection(); // reuse existing error for invalid target
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
-        if (collection.ownerOf(expectedId) == address(this)) revert AlreadyNFTOwner();
+        if (isERC1155) {
+            if (collection1155.balanceOf(address(this), expectedId) > 0) revert AlreadyNFTOwner();
+        } else {
+            if (collection721.ownerOf(expectedId) == address(this)) revert AlreadyNFTOwner();
+        }
         if (value > currentFees) revert NotEnoughEth();
 
         uint256 ethBalanceBefore = address(this).balance;
-        uint256 nftBalanceBefore = collection.balanceOf(address(this));
+        uint256 nftBalanceBefore = isERC1155
+            ? collection1155.balanceOf(address(this), expectedId)
+            : collection721.balanceOf(address(this));
 
         (bool success, bytes memory reason) = target.call{value: value}(data);
         if (!success) revert ExternalCallFailed(reason);
 
-        _completePurchase(expectedId, ethBalanceBefore, nftBalanceBefore);
+        _completePurchase(expectedId, 1, ethBalanceBefore, nftBalanceBefore);
     }
 
     /// @notice Sell an NFT to a user
@@ -200,9 +176,13 @@ contract FeeContract is ReentrancyGuard {
         
         if (salePrice == 0) revert NFTNotForSale();
         if (msg.value != salePrice) revert NFTPriceTooLow();
-        if (collection.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
-        
-        collection.transferFrom(address(this), msg.sender, tokenId);
+        if (isERC1155) {
+            if (collection1155.balanceOf(address(this), tokenId) == 0) revert NotNFTOwner();
+            collection1155.safeTransferFrom(address(this), msg.sender, tokenId, 1, "");
+        } else {
+            if (collection721.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
+            collection721.transferFrom(address(this), msg.sender, tokenId);
+        }
         
         delete nftForSale[tokenId];
         // Remove tokenId from heldTokenIds array
@@ -314,25 +294,42 @@ contract FeeContract is ReentrancyGuard {
         uint256 maxPrice
     ) internal {
         if (currentHoldings >= MAX_NFTS) revert ContractFull();
-        if (openSeaOrder.offerToken != address(collection)) revert InvalidCollection();
+        if (openSeaOrder.offerToken != collection) revert InvalidCollection();
 
         uint256 tokenId = openSeaOrder.offerIdentifier;
-        if (collection.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
+        if (isERC1155) {
+            if (collection1155.balanceOf(address(this), tokenId) > 0) revert AlreadyNFTOwner();
+        } else {
+            if (collection721.ownerOf(tokenId) == address(this)) revert AlreadyNFTOwner();
+        }
         if (maxPrice > currentFees) revert NotEnoughEth();
 
         uint256 ethBalanceBefore = address(this).balance;
-        uint256 nftBalanceBefore = collection.balanceOf(address(this));
+        uint256 nftBalanceBefore = isERC1155
+            ? collection1155.balanceOf(address(this), tokenId)
+            : collection721.balanceOf(address(this));
 
         openSeaBuyer.buyNFTBasic{value: maxPrice}(openSeaOrder);
 
-        _completePurchase(tokenId, ethBalanceBefore, nftBalanceBefore);
+        _completePurchase(tokenId, 1, ethBalanceBefore, nftBalanceBefore);
     }
 
     /// @notice Complete purchase by verifying NFT received and updating state
-    function _completePurchase(uint256 tokenId, uint256 ethBalanceBefore, uint256 nftBalanceBefore) internal {
-        uint256 nftBalanceAfter = collection.balanceOf(address(this));
-        if (nftBalanceAfter != nftBalanceBefore + 1) revert NeedToBuyNFT();
-        if (collection.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
+    function _completePurchase(
+        uint256 tokenId,
+        uint256 amount,
+        uint256 ethBalanceBefore,
+        uint256 nftBalanceBefore
+    ) internal {
+        uint256 nftBalanceAfter = isERC1155
+            ? collection1155.balanceOf(address(this), tokenId)
+            : collection721.balanceOf(address(this));
+        if (nftBalanceAfter < nftBalanceBefore + amount) revert NeedToBuyNFT();
+        if (isERC1155) {
+            if (collection1155.balanceOf(address(this), tokenId) == 0) revert NotNFTOwner();
+        } else {
+            if (collection721.ownerOf(tokenId) != address(this)) revert NotNFTOwner();
+        }
 
         uint256 actualCost = ethBalanceBefore - address(this).balance;
         currentFees -= actualCost;
@@ -418,11 +415,39 @@ contract FeeContract is ReentrancyGuard {
         uint256,
         bytes calldata
     ) external view returns (bytes4) {
-        if (msg.sender != address(collection)) {
+        if (isERC1155 || msg.sender != collection) {
             revert InvalidCollection();
         }
 
         return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external view returns (bytes4) {
+        if (!isERC1155 || msg.sender != collection) {
+            revert InvalidCollection();
+        }
+
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) external view returns (bytes4) {
+        if (!isERC1155 || msg.sender != collection) {
+            revert InvalidCollection();
+        }
+
+        return this.onERC1155BatchReceived.selector;
     }
 
     /// @notice Emergency withdrawal for contract owner
@@ -430,27 +455,27 @@ contract FeeContract is ReentrancyGuard {
         SafeTransferLib.forceSafeTransferETH(msg.sender, address(this).balance);
     }
 
-    /// @notice Reject any ERC1155 token transfers (prevents unintended airdrops)
-    function onERC1155Received(
-        address,
-        address,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external pure returns (bytes4) {
-        revert InvalidCollection();
-    }
+    // /// @notice Reject any ERC1155 token transfers (prevents unintended airdrops)
+    // function onERC1155Received(
+    //     address,
+    //     address,
+    //     uint256,
+    //     uint256,
+    //     bytes calldata
+    // ) external pure returns (bytes4) {
+    //     revert InvalidCollection();
+    // }
 
-    /// @notice Reject any batch ERC1155 token transfers (prevents unintended airdrops)
-    function onERC1155BatchReceived(
-        address,
-        address,
-        uint256[] calldata,
-        uint256[] calldata,
-        bytes calldata
-    ) external pure returns (bytes4) {
-        revert InvalidCollection();
-    }
+    // /// @notice Reject any batch ERC1155 token transfers (prevents unintended airdrops)
+    // function onERC1155BatchReceived(
+    //     address,
+    //     address,
+    //     uint256[] calldata,
+    //     uint256[] calldata,
+    //     bytes calldata
+    // ) external pure returns (bytes4) {
+    //     revert InvalidCollection();
+    // }
 
     receive() external payable {}
 }
