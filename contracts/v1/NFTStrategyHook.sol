@@ -602,29 +602,27 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
         BalanceDelta delta,
         bytes calldata
     ) internal override returns (bytes4, int128) {
+        // Treat buys (zeroForOne) as paying fees in ETH (currency0) and sells in token (currency1).
+        bool isBuy = params.zeroForOne;
+        Currency feeCurrency = isBuy ? key.currency0 : key.currency1;
+
+        // Use the amount in the fee currency direction for fee calculation.
         bool specifiedTokenIs0 = (params.amountSpecified < 0) == params.zeroForOne;
-        Currency feeCurrency = specifiedTokenIs0 ? key.currency1 : key.currency0;
         int128 rawSwapAmount = specifiedTokenIs0 ? delta.amount1() : delta.amount0();
         int256 magnitude = int256(rawSwapAmount);
-        if (magnitude < 0) {
-            magnitude = -magnitude;
-        }
+        if (magnitude < 0) magnitude = -magnitude;
         uint128 swapAmount = uint128(uint256(magnitude));
 
         bool ethFee = Currency.unwrap(feeCurrency) == address(0);
         address rarityToken = Currency.unwrap(key.currency1);
 
-        uint128 currentFee = calculateFee(rarityToken, params.zeroForOne);
+        uint128 currentFee = calculateFee(rarityToken, isBuy);
         uint256 feeAmount = uint256(swapAmount) * currentFee / TOTAL_BIPS;
-
-        if (feeAmount == 0) {
-            return (BaseHook.afterSwap.selector, 0);
-        }
+        if (feeAmount == 0) return (BaseHook.afterSwap.selector, 0);
 
         manager.take(feeCurrency, address(this), feeAmount);
 
         uint128 feeAmount128 = uint128(feeAmount);
-
         emit HookFee(
             PoolId.unwrap(key.toId()),
             sender,
@@ -632,9 +630,15 @@ contract NFTStrategyHook is BaseHook, ReentrancyGuard {
             ethFee ? 0 : feeAmount128
         );
 
-        uint256 amountForProcessing = ethFee ? feeAmount : _swapToEth(key, feeAmount);
+        uint256 amountForProcessing;
+        if (ethFee) {
+            amountForProcessing = feeAmount; // already ETH
+        } else {
+            // Sell path: convert token fee to ETH before processing
+            amountForProcessing = _swapToEth(key, feeAmount);
+        }
+
         _processFees(rarityToken, amountForProcessing);
-        
         emit Trade(rarityToken, _getCurrentPrice(key), delta.amount0(), delta.amount1());
 
         if (nftStrategyFactory.routerRestrict()) {
